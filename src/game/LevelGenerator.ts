@@ -9,9 +9,9 @@ export interface CategoryDef {
 
 export interface LevelConfig {
   categories: CategoryDef[]
-  movesBack: number             // reverse steps ≈ theoretical min moves to solve
-  movesLimitMultiplier: number  // movesLimit = ceil(movesBack * multiplier) + buffer
-  seed?: number                 // fixed seed for reproducible layouts; undefined = random
+  movesBack: number   // reverse steps to scramble from solved state
+  moveBuffer: number  // extra moves added on top of preciseCost → movesLimit = preciseCost + moveBuffer
+  seed?: number       // fixed seed for reproducible layouts; undefined = random
 }
 
 // ── Internal types ─────────────────────────────────────────
@@ -25,14 +25,18 @@ interface GenState {
 type ReverseMove =
   | { kind: 'f2t'; category: string; stackIndex: number }
   | { kind: 'f2s'; category: string }
-  | { kind: 't2t'; from: number; to: number }
+  // groupSize = number of cards moved together; each card costs 1 forward move (faceUp constraint)
+  | { kind: 't2t'; from: number; to: number; groupSize: number }
+  // Reverses "player drew from stock and placed card onto this tableau stack".
+  // Allows continued scrambling after all foundation cards are distributed.
+  | { kind: 't2s'; stackIndex: number }
 
 // ── Card factory ───────────────────────────────────────────
 
 function makeCard(category: string, isBase: boolean, index: number): Card {
   const id = isBase ? `${category}-base` : `${category}-${index}`
   const label = isBase ? `【${category}】` : `${category}${index}`
-  return { id, category, isBase, label }
+  return { id, category, isBase, label, faceUp: false }  // initGameState sets actual faceUp
 }
 
 // ── Movable group (mirrors MoveValidator — no import to avoid circular dep) ──
@@ -81,19 +85,24 @@ function getValidReverseMoves(state: GenState): ReverseMove[] {
 
     const group = getMovableGroup(fromStack)
     const bottom = group[0]
+    const groupSize = group.length
 
     for (let to = 0; to < state.tableau.length; to++) {
       if (from === to) continue
       const toStack = state.tableau[to]
       if (toStack.length === 0) {
-        moves.push({ kind: 't2t', from, to })
+        moves.push({ kind: 't2t', from, to, groupSize })
       } else {
         const toTop = toStack[toStack.length - 1]
         if (!toTop.isBase && toTop.category === bottom.category) {
-          moves.push({ kind: 't2t', from, to })
+          moves.push({ kind: 't2t', from, to, groupSize })
         }
       }
     }
+
+    // t2s: push the single top card back to stock front.
+    // One card only — each stock draw places exactly one card.
+    moves.push({ kind: 't2s', stackIndex: from })
   }
 
   return moves
@@ -114,11 +123,15 @@ function applyReverseMove(move: ReverseMove, state: GenState): GenState {
   } else if (move.kind === 'f2s') {
     const card = next.foundations.get(move.category)!.pop()!
     next.stock.unshift(card)
-  } else {
+  } else if (move.kind === 't2t') {
     const fromStack = next.tableau[move.from]
     const group = getMovableGroup(fromStack)
     fromStack.splice(fromStack.length - group.length, group.length)
     next.tableau[move.to].push(...group)
+  } else {
+    // t2s: pop the single top card and push to the front of stock
+    const card = next.tableau[move.stackIndex].pop()!
+    next.stock.unshift(card)
   }
 
   return next
@@ -178,12 +191,23 @@ export function generateFromConfig(config: LevelConfig): LevelData & { stats: Ge
     foundations,
   }
 
-  // Apply reverse moves
+  // Apply reverse moves, accumulating the exact forward cost at each step.
+  //
+  // Forward cost per reverse operation:
+  //   f2t  → 1  (the card will move from Tableau to Foundation in one forward move)
+  //   f2s  → 1  (a Stock draw in the forward game)
+  //   t2s  → 1  (a Stock draw in the forward game)
+  //   t2t  → groupSize  (each card in the group starts face-down; the player must
+  //                      uncover and move them sequentially — one forward move per card)
   let appliedMoves = 0
+  let t2sCount = 0
+  let preciseCost = 0  // exact minimum forward moves to solve, accounting for faceUp
   for (let i = 0; i < config.movesBack; i++) {
     const moves = getValidReverseMoves(state)
     if (moves.length === 0) break
     const move = moves[Math.floor(rng() * moves.length)]
+    preciseCost += move.kind === 't2t' ? move.groupSize : 1
+    if (move.kind === 't2s') t2sCount++
     state = applyReverseMove(move, state)
     appliedMoves++
   }
@@ -195,7 +219,7 @@ export function generateFromConfig(config: LevelConfig): LevelData & { stats: Ge
     }
   }
 
-  const movesLimit = Math.ceil(appliedMoves * config.movesLimitMultiplier) + 8
+  const movesLimit = preciseCost + config.moveBuffer
   const tableauCardCount = state.tableau.reduce((s, stack) => s + stack.length, 0)
 
   return {
@@ -210,6 +234,9 @@ export function generateFromConfig(config: LevelConfig): LevelData & { stats: Ge
       tableauCards: tableauCardCount,
       stockCards: state.stock.length,
       appliedMoves,
+      t2sCount,
+      preciseCost,
+      moveBuffer: config.moveBuffer,
       movesLimit,
     },
   }
@@ -221,7 +248,10 @@ export interface GenerationStats {
   tableauCards: number
   stockCards: number
   appliedMoves: number   // actual reverse steps applied (may be < movesBack if stuck)
-  movesLimit: number
+  t2sCount: number       // how many of those were t2s (post-foundation scramble steps)
+  preciseCost: number    // exact minimum forward moves (t2t counts groupSize, others count 1)
+  moveBuffer: number     // fixed extra moves added on top of preciseCost
+  movesLimit: number     // = preciseCost + moveBuffer
 }
 
 // ── Convenience wrapper (backward compat) ─────────────────
@@ -234,7 +264,7 @@ export function generateLevel(
   return generateFromConfig({
     categories,
     movesBack,
-    movesLimitMultiplier: 1.6,
+    moveBuffer: 10,
     seed,
   })
 }
@@ -251,5 +281,5 @@ export function uniformCategories(count: number, cardCount: number): CategoryDef
 export const DEFAULT_CONFIG: LevelConfig = {
   categories: uniformCategories(2, 3),
   movesBack: 18,
-  movesLimitMultiplier: 1.6,
+  moveBuffer: 10,
 }

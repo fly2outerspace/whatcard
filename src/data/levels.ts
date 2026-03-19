@@ -2,7 +2,7 @@ import type { LevelData, Card } from '../types/game'
 
 function card(id: string, category: string, isBase: boolean): Card {
   const label = isBase ? `【${category}】` : `${category}${id.split('-')[1]}`
-  return { id, category, isBase, label }
+  return { id, category, isBase, label, faceUp: false }  // initGameState sets actual faceUp
 }
 
 /**

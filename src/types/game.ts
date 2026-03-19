@@ -3,6 +3,7 @@ export interface Card {
   category: string   // 'A' | 'B' | 'C' ...
   isBase: boolean    // true = 基座牌【A】
   label: string      // display text, e.g. "【A】" or "A1"
+  faceUp: boolean    // false = face-down (hidden, immovable); initGameState sets initial state
 }
 
 export interface Stack {

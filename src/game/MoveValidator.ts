@@ -32,19 +32,22 @@ export function getMovableGroup(stack: Stack): Card[] {
 
   const topCard = cards.at(-1)!
 
+  // Face-down top card is hidden and cannot be moved
+  if (!topCard.faceUp) return []
+
   if (topCard.isBase) {
-    // Base card on top: include it + consecutive same-category non-base cards below
-    let count = 1  // the base card itself
+    // Base card on top: include it + consecutive face-up same-category non-base cards below
+    let count = 1
     for (let i = cards.length - 2; i >= 0; i--) {
-      if (cards[i].category === topCard.category && !cards[i].isBase) count++
+      if (cards[i].faceUp && cards[i].category === topCard.category && !cards[i].isBase) count++
       else break
     }
     return cards.slice(cards.length - count)
   } else {
-    // Non-base card on top: count consecutive same-category non-base cards from top
+    // Non-base card on top: consecutive face-up same-category non-base cards from top
     let count = 0
     for (let i = cards.length - 1; i >= 0; i--) {
-      if (cards[i].category === topCard.category && !cards[i].isBase) count++
+      if (cards[i].faceUp && cards[i].category === topCard.category && !cards[i].isBase) count++
       else break
     }
     return cards.slice(cards.length - count)

@@ -35,8 +35,8 @@ function createPanel(): void {
       </div>
 
       <div class="debug-row">
-        <label>步数倍率</label>
-        <input type="number" id="d-moves-mult" value="1.6" min="1.0" max="4.0" step="0.1"
+        <label>步数缓冲（moveBuffer）</label>
+        <input type="number" id="d-move-buffer" value="10" min="0" max="50" step="1"
                style="width:64px;padding:2px 4px;border-radius:4px;border:1px solid #ccc">
       </div>
 
@@ -87,9 +87,11 @@ export function updateDebugStats(stats: GenerationStats): void {
   el.innerHTML = `
     <div class="stat-row"><span>总牌数</span><b>${stats.totalCards}</b></div>
     <div class="stat-row"><span>Tableau / Stock</span><b>${stats.tableauCards} / ${stats.stockCards}</b></div>
-    <div class="stat-row"><span>实际反推步数</span><b>${stats.appliedMoves}</b></div>
+    <div class="stat-row"><span>反推步数（appliedMoves）</span><b>${stats.appliedMoves}</b></div>
+    <div class="stat-row"><span>其中 t2s（基座后混乱）</span><b>${stats.t2sCount}</b></div>
+    <div class="stat-row"><span>精确前向代价（preciseCost）</span><b>${stats.preciseCost}</b></div>
+    <div class="stat-row"><span>步数缓冲（moveBuffer）</span><b>+ ${stats.moveBuffer}</b></div>
     <div class="stat-row"><span>步数上限</span><b>${stats.movesLimit}</b></div>
-    <div class="stat-row"><span>理论余量</span><b>${stats.movesLimit - stats.appliedMoves} 步</b></div>
   `
 }
 
@@ -98,7 +100,7 @@ export function updateDebugStats(stats: GenerationStats): void {
 function readConfig(): LevelConfig {
   const catCount = Number((document.getElementById('d-cat-count') as HTMLInputElement).value)
   const movesBack = Number((document.getElementById('d-moves-back') as HTMLInputElement).value)
-  const mult = Number((document.getElementById('d-moves-mult') as HTMLInputElement).value)
+  const moveBuffer = Number((document.getElementById('d-move-buffer') as HTMLInputElement).value)
   const seedRaw = (document.getElementById('d-seed') as HTMLInputElement).value.trim()
   const seed = seedRaw ? Number(seedRaw) : undefined
 
@@ -107,7 +109,7 @@ function readConfig(): LevelConfig {
     return { name, cardCount: slider ? Number(slider.value) : 3 }
   })
 
-  return { categories, movesBack, movesLimitMultiplier: mult, seed }
+  return { categories, movesBack, moveBuffer, seed }
 }
 
 // ── Wire events ────────────────────────────────────────────

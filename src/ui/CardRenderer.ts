@@ -1,16 +1,6 @@
-import type { GameState, Card, Stack } from '../types/game'
-import { getMovableGroup } from '../game/MoveValidator'
+import type { GameState, Card } from '../types/game'
 
 const CARD_OVERLAP = 28  // px, must match --card-overlap in CSS
-
-/**
- * Cards in the movable group (top consecutive same-category cards) are face-up.
- * Everything below the group is face-down.
- */
-function getVisibleStartDepth(stack: Stack): number {
-  const group = getMovableGroup(stack)
-  return stack.cards.length - group.length
-}
 
 /**
  * Create a card DOM element.
@@ -75,11 +65,8 @@ function renderTableau(state: GameState): void {
       : 96 + (cardCount - 1) * CARD_OVERLAP
     el.style.minHeight = `${height}px`
 
-    const visibleStart = getVisibleStartDepth(stack)
-
     stack.cards.forEach((card, depth) => {
-      const faceDown = depth < visibleStart
-      const cardEl = createCardEl(card, faceDown)
+      const cardEl = createCardEl(card, !card.faceUp)
       cardEl.style.top = `${depth * CARD_OVERLAP}px`
       cardEl.dataset.stackIndex = String(stackIndex)
       cardEl.dataset.depth = String(depth)

@@ -134,7 +134,7 @@ Phase 3: 内容扩充   → 10关、难度曲线
 > 表现层稳定后再做。
 
 - [ ] `game/LevelGenerator.ts`：倒推生成法实现
-- [ ] `game/DifficultyAnalyzer.ts`：依赖图分析，计算难度分
+- [ ] `game/DifficultyAnalyzer.ts`：依赖图分析，计算难度分 ← **[评注] 已放弃，不实现，见 v2 技术备注**
 - [ ] 补充 10 关关卡数据，体现难度递进（参考 design.md §3.5）
 - [ ] 关卡选择界面
 - [ ] 通关后进入下一关流程
@@ -218,12 +218,28 @@ Phase 4     表现层              → 动效、手感、美术（最后做）
 
 > 目标：让生成器支持任意类别数（2-5）和各类别不同牌数（3-7），并提供调试面板可实时调整、重新生成。
 
+> **[评注 — 倒推生成法修正，已实现]** Phase 3_a 开发中发现原倒推算法的 `f2t` 操作沿用了正向游戏的同类别约束，导致 Tableau 全为纯类别堆叠、游戏无挑战性。
+> **修正**：`f2t` 改为允许放到任意叠（无类别约束），模拟初始随机发牌；`t2t` 保持同类别约束不变。
+> 见 `src/game/LevelGenerator.ts` `getValidReverseMoves()`。
+
+> **[评注 — t2s 操作，已实现]** 发现 `movesBack` 设定值与实际反推步数（`appliedMoves`）不符：Foundation 清空后，只剩 `t2t` 可用，但混叠后同类别顶牌稀少，`t2t` 很快耗尽，循环提前终止。
+> **根本原因**：反向操作集在 Foundation 清空后严重收窄，无法持续混乱。
+> **修正**：新增 `t2s`（Tableau 顶牌 → Stock 头部），对应正向操作「玩家从 Stock 抽牌放到 Tableau」的逆转。`t2s` 在任何 Tableau 叠非空时均可用，使 Foundation 清空后操作集保持充足，`appliedMoves` 能真正逼近 `movesBack`。
+> 调试面板新增「t2s 计数」展示，可直观观察该阶段的混乱程度。
+> 见 `src/game/LevelGenerator.ts`。
+
+> **[评注 — 步数上限精确累计，已实现]** 旧方案 `movesLimit = ceil(appliedMoves × 2.0) + 8` 中 2.0 是模糊倍率，根本原因是 `t2t` 在反推时可整体移动 N 张牌（1 步），而正向游戏受 `faceUp` 约束，这 N 张牌须逐张翻开移动（N 步）。
+> **修正**：倒推循环中对每步精确累加前向代价：`f2t` / `f2s` / `t2s` 各计 1，`t2t` 计 `groupSize`，求和得 `preciseCost`（= 考虑 faceUp 后的理论最少步数）。`movesLimit = preciseCost + moveBuffer`，`moveBuffer` 为可配置的固定整数（默认 10），取代原来的浮点倍率和固定偏移。
+> `LevelConfig.movesLimitMultiplier` 已移除，替换为 `moveBuffer`；调试面板同步更新，展示 `preciseCost` 和 `moveBuffer`。
+> 见 `src/game/LevelGenerator.ts`，`GenerationStats.preciseCost`；亦见 design.md §3.2 评注。
+
 ### M8 — 扩展生成器配置
 
 - [ ] 扩展 `CategoryDef`：支持每个类别独立设置 `cardCount`（3-7）
 - [ ] 扩展 `generateLevel`：接受完整的 `LevelConfig`（包含类别列表、movesBack、movesLimit 倍率）
 - [ ] 验证 3 / 4 / 5 类别场景下生成器均能正常产出布局
 - [ ] 验证总牌数较多时（如 5类×5张=25张）tableau 4叠和 stock 容量分配合理
+- [x] **新增 `t2s` 反向操作**：Tableau 顶牌 → Stock 头部，解决 Foundation 清空后 `appliedMoves < movesBack` 的问题
 
 > **牌数分配规则**：tableau 固定 4 叠（2/3/4/5 张），共 14 张；其余牌进入 stock。
 > 若总牌数 < 14，tableau 叠数和深度自动缩减；此规则需在生成器中明确实现。
@@ -245,12 +261,40 @@ Phase 4     表现层              → 动效、手感、美术（最后做）
 
 ---
 
+### ⚠️ M9b — 卡牌翻开状态（faceUp）【关键机制，立即验证】
+
+> **这是影响整个游戏可玩性的核心设定，必须在难度标定之前完成。**
+>
+> 当前实现中所有牌初始可见，与真实规则不符。
+
+**规则**：
+- 初始发牌后，每叠 Tableau **仅顶牌翻开**，其余全部背面朝下
+- 背面朝下的牌**不可见、不可移动、不参与任何合并**
+- 顶部牌被移走后，下方第一张自动翻开（变为 faceUp）
+- 即使两张同类别牌相邻，下方那张若背面朝下，不会自动合并
+- Stock 全部背面朝下，抽出后翻开进入 Discard
+
+**实现范围**：
+- [ ] `types/game.ts`：`Card` 新增 `faceUp: boolean`
+- [ ] `game/GameState.ts`：`initGameState` 设初始翻开状态；`applyMove` 移走顶牌后翻开新顶牌；`drawFromStock` 抽牌时翻开
+- [ ] `game/MoveValidator.ts`：`getMovableGroup` 遇到 `faceUp=false` 的牌即停止
+- [ ] `game/LevelGenerator.ts` / `data/levels.ts`：生成的 Card 默认 `faceUp: false`
+- [ ] `ui/CardRenderer.ts`：直接使用 `card.faceUp` 决定渲染方式，替换原有的深度计算
+
+**验收**：初始布局只有各叠顶牌可见；移走顶牌后下一张翻开；背面朝下的牌无法被选中或拖动。
+
+---
+
 ## Phase 3_b — 难度系统验证
 
 > 目标：在做固定关卡之前，用贪心 Bot 验证参数与难度的实际对应关系。
 
 > **[技术备注]** 不使用依赖图。难度以「贪心 Bot 通关率」为核心指标。
 > 贪心 Bot 策略：每步优先选「能直接送入 Foundation」的操作，其次选「能暴露新底牌」的操作，否则抽 Stock。
+
+> **[评注 — Bot 的职责边界]** 本阶段 Bot 的唯一职责是**难度标定**（测通关率 → 校准参数）。
+> **Bot 不负责可解性验证**——可解性由倒推生成法在生成阶段直接保证，无需 Bot 二次确认。
+> 「随机生成 + Bot 验证可解性 + 不可解重试」属于已放弃的方向B，见 design.md §3.4 评注。
 
 ### M10 — 贪心 Bot 实现
 
