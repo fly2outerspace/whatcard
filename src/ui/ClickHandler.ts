@@ -1,5 +1,5 @@
 import type { GameState, MoveSource, MoveTarget } from '../types/game'
-import { getMovingCards } from '../game/MoveValidator'
+import { getMovingCards, getMovableGroup } from '../game/MoveValidator'
 import { applyMove, drawFromStock, reshuffleDiscard } from '../game/GameState'
 import { isGamePaused } from './MenuHandler'
 
@@ -149,15 +149,17 @@ export function initClickHandler(
       clearSelection()
     }
 
-    // Select top card of this stack
+    // Select movable group — any face-up card in the group (same as drag affordance)
     if (stack.cards.length === 0) return
     if (!cardEl) return
 
+    const group = getMovableGroup(stack)
+    if (group.length === 0) return
+    const startDepth = stack.cards.length - group.length
     const depth = Number(cardEl.dataset.depth ?? stack.cards.length - 1)
-    const isTop = depth === stack.cards.length - 1
-    if (!isTop) return  // Face-down / buried card
+    if (depth < startDepth) return
 
-    selection.source = { kind: 'tableau', stackIndex, cardCount: 1 }
+    selection.source = { kind: 'tableau', stackIndex, cardCount: group.length }
     setSelectionHighlight(selection.source, state, true)
   })
 }

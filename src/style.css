@@ -407,9 +407,7 @@ html, body {
   font-size: 13px;
   font-weight: 600;
   color: #333;
-  /* transform transition makes the .selected lift (translateY) animate smoothly
-     instead of jumping instantly after a snap-back. box-shadow for glow fade. */
-  transition: box-shadow 0.12s, transform 0.14s ease-out;
+  transition: box-shadow 0.12s;
   /* Allow 3D transforms from animations */
   transform-style: preserve-3d;
   backface-visibility: hidden;
@@ -528,15 +526,8 @@ html, body {
 .card.base-card[data-category="K"] { border-color: var(--cat-K-color); background: linear-gradient(145deg, #f7fee7, #ecfccb); }
 .card.base-card[data-category="L"] { border-color: var(--cat-L-color); background: linear-gradient(145deg, #eef2ff, #e0e7ff); }
 
-/* Selected card highlight (click-to-select source card) */
-.card.selected {
-  box-shadow:
-    0 0 0 2.5px #fde047,
-    0 4px 16px rgba(0,0,0,0.25),
-    0 8px 24px rgba(0,0,0,0.12);
-  transform: translateY(-6px);
-  z-index: 100;
-}
+/* Selected card highlight — lift and glow removed to avoid overflow/clip issues.
+   The .selected class is still toggled by ClickHandler but has no visual effect. */
 
 
 /* Card being dragged (ghost) — disable CSS transitions so GSAP has full control */

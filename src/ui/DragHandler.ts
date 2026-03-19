@@ -1,6 +1,6 @@
 import { gsap } from 'gsap'
 import type { GameState, MoveSource, MoveTarget, Card } from '../types/game'
-import { isValidMove, getMovingCards } from '../game/MoveValidator'
+import { isValidMove, getMovingCards, getMovableGroup } from '../game/MoveValidator'
 import { applyMove } from '../game/GameState'
 import { createCardEl } from './CardRenderer'
 import { isGamePaused } from './MenuHandler'
@@ -78,29 +78,48 @@ function moveGhost(x: number, y: number): void {
   session.ghostEl.style.top = `${y - session.offsetY}px`
 }
 
+/**
+ * Hit-test probe: center of movingCards[0] — the bottom card of the group
+ * (visually topmost / covered). This card is rendered at top:0 in the ghost,
+ * so its center is simply (ghostLeft + w/2, ghostTop + h/2).
+ * Using the covered card keeps the probe away from tableau stacks below,
+ * and matches the natural gesture of lining up the connecting card to a slot.
+ */
+function getDragDropProbe(clientX: number, clientY: number): { x: number; y: number } {
+  if (!session || session.cards.length === 0) return { x: clientX, y: clientY }
+  const gx = clientX - session.offsetX
+  const gy = clientY - session.offsetY
+  return {
+    x: gx + CARD_W_PX / 2,
+    y: gy + CARD_H_PX / 2,
+  }
+}
 
 // ── Hit testing ────────────────────────────────────────────
 
 function findDropTarget(x: number, y: number, state: GameState): MoveTarget | null {
   if (!session) return null
 
-  // Foundation slots
+  // Foundation slots — probe is center of movingCards[0] (visually top/covered card)
+  const fPad = 16
   for (const el of document.querySelectorAll<HTMLElement>('.foundation-slot')) {
     const rect = el.getBoundingClientRect()
-    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+    if (
+      x >= rect.left - fPad && x <= rect.right + fPad &&
+      y >= rect.top  - fPad && y <= rect.bottom + fPad
+    ) {
       const target: MoveTarget = { kind: 'foundation', slotIndex: Number(el.dataset.slotIndex) }
       if (isValidMove(session.source, target, state)) return target
     }
   }
 
-  // Tableau stacks
+  // Tableau stacks — use full stack container rect so probe hits anywhere on the column
+  const tPad = 12
   for (const el of document.querySelectorAll<HTMLElement>('.tableau-stack')) {
     const rect = el.getBoundingClientRect()
-    // Expand hit area slightly for empty stacks
-    const pad = 12
     if (
-      x >= rect.left - pad && x <= rect.right + pad &&
-      y >= rect.top - pad && y <= rect.bottom + pad
+      x >= rect.left - tPad && x <= rect.right + tPad &&
+      y >= rect.top  - tPad && y <= rect.bottom + tPad
     ) {
       const target: MoveTarget = { kind: 'tableau', stackIndex: Number(el.dataset.stackIndex) }
       if (isValidMove(session.source, target, state)) return target
@@ -183,15 +202,17 @@ function onPointerDown(e: PointerEvent): void {
     source = { kind: 'discard' }
   }
 
-  // Check if from tableau top
+  // Tableau: allow grab from any face-up card in the movable group (not only the top card)
   const stackEl = cardEl.closest<HTMLElement>('.tableau-stack')
   if (stackEl) {
     const stackIndex = Number(stackEl.dataset.stackIndex)
     const stack = state.tableau[stackIndex]
     const depth = Number(cardEl.dataset.depth ?? stack.cards.length - 1)
-    const isTop = depth === stack.cards.length - 1
-    if (!isTop) return
-    source = { kind: 'tableau', stackIndex, cardCount: 1 }
+    const group = getMovableGroup(stack)
+    if (group.length === 0) return
+    const startDepth = stack.cards.length - group.length
+    if (depth < startDepth) return
+    source = { kind: 'tableau', stackIndex, cardCount: group.length }
   }
 
   if (!source) return
@@ -201,16 +222,21 @@ function onPointerDown(e: PointerEvent): void {
 
   e.preventDefault()
 
-  const topCardRect = cardEl.getBoundingClientRect()
   const groupSize = movingCards.length
+  const grabbedRect = cardEl.getBoundingClientRect()
 
-  // movingCards is ordered bottom-to-top (cards.slice), so cards[0] is the
-  // bottommost card of the group, rendered first in the ghost at top:0.
-  // The ghost must be positioned at cards[0]'s screen position, NOT the top
-  // card's position — otherwise the entire group is offset downward by
-  // (groupSize-1)*OVERLAP pixels, causing the fly-to misalignment bug.
-  const ghostLeft = topCardRect.left
-  const ghostTop  = topCardRect.top - (groupSize - 1) * CARD_OVERLAP_PX
+  // Ghost layout: movingCards[0] at internal top:0, … last card at top:(groupSize-1)*OVERLAP.
+  // Position ghost so the grabbed card stays under the pointer (no jump).
+  let indexInGroup = 0
+  if (source.kind === 'tableau') {
+    const tblStack = state.tableau[source.stackIndex]
+    const grpStartDepth = tblStack.cards.length - groupSize
+    const d = Number(cardEl.dataset.depth ?? tblStack.cards.length - 1)
+    indexInGroup = d - grpStartDepth
+  }
+
+  const ghostLeft = grabbedRect.left
+  const ghostTop = grabbedRect.top - indexInGroup * CARD_OVERLAP_PX
 
   const ghost = buildGhost(movingCards)
   ghost.style.left = `${ghostLeft}px`
@@ -221,7 +247,7 @@ function onPointerDown(e: PointerEvent): void {
     cards: movingCards,
     ghostEl: ghost,
     originEl: cardEl,
-    originRect: new DOMRect(ghostLeft, ghostTop, topCardRect.width, topCardRect.height),
+    originRect: new DOMRect(ghostLeft, ghostTop, grabbedRect.width, grabbedRect.height),
     offsetX: e.clientX - ghostLeft,
     offsetY: e.clientY - ghostTop,
   }
@@ -245,7 +271,8 @@ function onPointerUp(e: PointerEvent): void {
   if (!session) return
 
   const state = getState()
-  const target = findDropTarget(e.clientX, e.clientY, state)
+  const probe = getDragDropProbe(e.clientX, e.clientY)
+  const target = findDropTarget(probe.x, probe.y, state)
 
   if (target) {
     const next = applyMove({ source: session.source, target }, state)
