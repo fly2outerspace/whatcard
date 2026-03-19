@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>WhatCard</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Top bar -->
+      <div id="top-bar">
+        <button id="menu-btn" aria-label="菜单">&#9776;</button>
+        <div id="moves-counter">
+          <span class="label">剩余步数</span>
+          <span id="moves-value">--</span>
+        </div>
+      </div>
+
+      <!-- Menu overlay -->
+      <div id="menu-overlay" class="hidden">
+        <div id="menu-panel">
+          <h3 id="menu-title">菜单</h3>
+          <button id="menu-regenerate" class="menu-action-btn">
+            <span class="menu-icon">↺</span>
+            <span>重新生成</span>
+          </button>
+          <button id="menu-continue" class="menu-action-btn secondary">
+            <span class="menu-icon">▶</span>
+            <span>继续游戏</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Foundation slots -->
+      <div id="foundation-area">
+        <div class="foundation-slot" data-slot-index="0"></div>
+        <div class="foundation-slot" data-slot-index="1"></div>
+        <div class="foundation-slot" data-slot-index="2"></div>
+        <div class="foundation-slot" data-slot-index="3"></div>
+      </div>
+
+      <!-- Tableau -->
+      <div id="tableau-area">
+        <div class="tableau-stack" data-stack-index="0"></div>
+        <div class="tableau-stack" data-stack-index="1"></div>
+        <div class="tableau-stack" data-stack-index="2"></div>
+        <div class="tableau-stack" data-stack-index="3"></div>
+      </div>
+
+      <!-- Stock & Discard -->
+      <div id="stock-area">
+        <div id="stock-pile" title="点击抽牌">
+          <span class="stock-count">0</span>
+        </div>
+        <div id="discard-pile"></div>
+      </div>
+
+      <!-- Overlay for win/lose -->
+      <div id="overlay" class="hidden">
+        <div id="overlay-content">
+          <h2 id="overlay-title"></h2>
+          <button id="overlay-btn">再来一局</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
