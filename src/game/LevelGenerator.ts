@@ -194,30 +194,45 @@ export function generateFromConfig(config: LevelConfig): LevelData & { stats: Ge
   // Apply reverse moves, accumulating the exact forward cost at each step.
   //
   // Forward cost per reverse operation:
-  //   f2t  → 1  (the card will move from Tableau to Foundation in one forward move)
-  //   f2s  → 1  (a Stock draw in the forward game)
-  //   t2s  → 1  (a Stock draw in the forward game)
+  //   f2t  → 1   (Tableau → Foundation in the forward game: 1 move)
+  //   f2s  → 2   (Stock draw to Discard: 1 move) + (Discard → target: 1 move)
+  //   t2s  → 2   (same as f2s: draw + place)
   //   t2t  → groupSize  (each card in the group starts face-down; the player must
   //                      uncover and move them sequentially — one forward move per card)
+  //
+  // Stock-bound operations cost 2 because accessing a Stock card always requires two
+  // distinct moves: click Stock to reveal (draw to Discard), then move from Discard to target.
   let appliedMoves = 0
   let t2sCount = 0
-  let preciseCost = 0  // exact minimum forward moves to solve, accounting for faceUp
+  let preciseCost = 0  // exact minimum forward moves to solve
   for (let i = 0; i < config.movesBack; i++) {
     const moves = getValidReverseMoves(state)
     if (moves.length === 0) break
     const move = moves[Math.floor(rng() * moves.length)]
-    preciseCost += move.kind === 't2t' ? move.groupSize : 1
+    if (move.kind === 't2t') {
+      preciseCost += move.groupSize
+    } else if (move.kind === 'f2s' || move.kind === 't2s') {
+      preciseCost += 2  // draw to Discard + move from Discard to target
+    } else {
+      preciseCost += 1  // f2t: direct Tableau → Foundation
+    }
     if (move.kind === 't2s') t2sCount++
     state = applyReverseMove(move, state)
     appliedMoves++
   }
 
-  // Flush remaining foundation cards to stock
+  // Flush remaining foundation cards to stock.
+  // Each flushed card requires 2 forward moves to use: draw to Discard (1) + place at target (1).
+  // Without this, low movesBack leaves many cards in Foundation, dumping them into Stock with
+  // no cost accounted for, making the puzzle structurally unsolvable within movesLimit.
+  let flushedCount = 0
   for (const [, cards] of state.foundations) {
+    flushedCount += cards.length
     while (cards.length > 0) {
       state.stock.unshift(cards.pop()!)
     }
   }
+  preciseCost += flushedCount * 2
 
   const movesLimit = preciseCost + config.moveBuffer
   const tableauCardCount = state.tableau.reduce((s, stack) => s + stack.length, 0)
@@ -271,7 +286,8 @@ export function generateLevel(
 
 // ── Presets ────────────────────────────────────────────────
 
-export const CATEGORY_NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+/** Supports up to 12 categories for Phase 3_b+ calibration (debug panel). */
+export const CATEGORY_NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
 
 /** Build a CategoryDef array with uniform card counts. */
 export function uniformCategories(count: number, cardCount: number): CategoryDef[] {

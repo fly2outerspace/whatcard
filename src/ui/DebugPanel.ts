@@ -1,5 +1,6 @@
 import type { LevelConfig, GenerationStats } from '../game/LevelGenerator'
 import { CATEGORY_NAMES } from '../game/LevelGenerator'
+import { batchGreedyTest } from '../game/GreedyBot'
 
 /**
  * Debug panel — only rendered in dev mode (import.meta.env.DEV).
@@ -24,19 +25,19 @@ function createPanel(): void {
 
       <div class="debug-row">
         <label>类别数量 <b id="dv-cat-count">2</b></label>
-        <input type="range" id="d-cat-count" min="2" max="5" value="2" step="1">
+        <input type="range" id="d-cat-count" min="2" max="12" value="2" step="1">
       </div>
 
       <div id="d-cat-rows"></div>
 
       <div class="debug-row">
         <label>movesBack <b id="dv-moves-back">18</b></label>
-        <input type="range" id="d-moves-back" min="8" max="50" value="18" step="1">
+        <input type="range" id="d-moves-back" min="8" max="150" value="18" step="1">
       </div>
 
       <div class="debug-row">
         <label>步数缓冲（moveBuffer）</label>
-        <input type="number" id="d-move-buffer" value="10" min="0" max="50" step="1"
+        <input type="number" id="d-move-buffer" value="10" min="0" max="150" step="1"
                style="width:64px;padding:2px 4px;border-radius:4px;border:1px solid #ccc">
       </div>
 
@@ -47,6 +48,7 @@ function createPanel(): void {
       </div>
 
       <button id="debug-apply">⚡ 生成并应用</button>
+      <button id="debug-bot-100" type="button">🤖 贪心 Bot ×100（当前参数）</button>
 
       <div id="debug-stats" class="debug-stats"></div>
     </div>
@@ -67,7 +69,7 @@ function renderCatRows(catCount: number, currentCounts: number[]): void {
     row.className = 'debug-row debug-cat-row'
     row.innerHTML = `
       <label>${name} 牌数 <b id="dv-cat-${i}">${val}</b></label>
-      <input type="range" id="d-cat-${i}" min="2" max="7" value="${val}" step="1"
+      <input type="range" id="d-cat-${i}" min="2" max="8" value="${val}" step="1"
              data-cat-index="${i}">
     `
     container.appendChild(row)
@@ -121,18 +123,20 @@ function wireEvents(): void {
   const catCountSlider = document.getElementById('d-cat-count') as HTMLInputElement
   const movesBackSlider = document.getElementById('d-moves-back') as HTMLInputElement
   const applyBtn = document.getElementById('debug-apply')!
+  const botBtn = document.getElementById('debug-bot-100') as HTMLButtonElement
 
   // Toggle panel
   toggle.addEventListener('click', () => content.classList.toggle('debug-hidden'))
   closeBtn.addEventListener('click', () => content.classList.add('debug-hidden'))
 
   // Category count change → rebuild rows
-  let catCounts: number[] = [3, 3, 3, 3, 3]
+  const defaultCatCounts = () => Array.from({ length: CATEGORY_NAMES.length }, () => 4)
+  let catCounts: number[] = defaultCatCounts()
   catCountSlider.addEventListener('input', () => {
     const n = Number(catCountSlider.value)
     document.getElementById('dv-cat-count')!.textContent = String(n)
     // Save current counts before re-render
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < CATEGORY_NAMES.length; i++) {
       const el = document.getElementById(`d-cat-${i}`) as HTMLInputElement | null
       if (el) catCounts[i] = Number(el.value)
     }
@@ -147,6 +151,33 @@ function wireEvents(): void {
     const config = readConfig()
     _currentConfig = config
     _onApply?.(config)
+  })
+
+  botBtn.addEventListener('click', () => {
+    const config = readConfig()
+    botBtn.disabled = true
+    botBtn.textContent = '⏳ Bot 运行中…'
+    // Defer so the button can repaint before heavy work
+    queueMicrotask(() => {
+      try {
+        const r = batchGreedyTest(config, 100)
+        const pct = (r.passRate * 100).toFixed(1)
+        const avg =
+          r.avgMovesUsedOnWin != null ? r.avgMovesUsedOnWin.toFixed(1) : '—'
+        const min = r.minMovesUsedOnWin ?? '—'
+        const max = r.maxMovesUsedOnWin ?? '—'
+        window.alert(
+          `贪心 Bot 批量测试完成（${r.sampleSize} 局）\n` +
+            `通关：${r.wins}\n` +
+            `通关率：${pct}%\n` +
+            `胜局用步（平均 / 最小 / 最大）：${avg} / ${min} / ${max}\n\n` +
+            `请将通关率填入排期 / difficultyPresets 标定表。`
+        )
+      } finally {
+        botBtn.disabled = false
+        botBtn.textContent = '🤖 贪心 Bot ×100（当前参数）'
+      }
+    })
   })
 
   // Initial cat rows
@@ -205,7 +236,9 @@ function injectStyles(): void {
       position: absolute;
       bottom: 50px;
       right: 0;
-      width: 240px;
+      width: 288px;
+      max-height: 85vh;
+      overflow-y: auto;
       background: #1e1e2e;
       color: #cdd6f4;
       border-radius: 12px;
@@ -271,6 +304,20 @@ function injectStyles(): void {
     }
 
     #debug-apply:hover { background: #94e2a1; }
+
+    #debug-bot-100 {
+      padding: 8px;
+      background: #89b4fa;
+      color: #1e1e2e;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #debug-bot-100:hover:not(:disabled) { background: #74c7ec; }
+    #debug-bot-100:disabled { opacity: 0.6; cursor: wait; }
 
     .debug-stats {
       background: #181825;

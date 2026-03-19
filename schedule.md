@@ -214,9 +214,9 @@ Phase 4     表现层              → 动效、手感、美术（最后做）
 
 ---
 
-## Phase 3_a — 多类别配置系统
+## Phase 3_a — 多类别配置系统 ✅ 已验收
 
-> 目标：让生成器支持任意类别数（2-5）和各类别不同牌数（3-7），并提供调试面板可实时调整、重新生成。
+> 目标：让生成器支持多类别与各类别不同牌数，并提供调试面板可实时调整、重新生成。
 
 > **[评注 — 倒推生成法修正，已实现]** Phase 3_a 开发中发现原倒推算法的 `f2t` 操作沿用了正向游戏的同类别约束，导致 Tableau 全为纯类别堆叠、游戏无挑战性。
 > **修正**：`f2t` 改为允许放到任意叠（无类别约束），模拟初始随机发牌；`t2t` 保持同类别约束不变。
@@ -235,10 +235,10 @@ Phase 4     表现层              → 动效、手感、美术（最后做）
 
 ### M8 — 扩展生成器配置
 
-- [ ] 扩展 `CategoryDef`：支持每个类别独立设置 `cardCount`（3-7）
-- [ ] 扩展 `generateLevel`：接受完整的 `LevelConfig`（包含类别列表、movesBack、movesLimit 倍率）
-- [ ] 验证 3 / 4 / 5 类别场景下生成器均能正常产出布局
-- [ ] 验证总牌数较多时（如 5类×5张=25张）tableau 4叠和 stock 容量分配合理
+- [x] 扩展 `CategoryDef`：每个类别独立 `cardCount`（调试面板 2–8 张）
+- [x] 扩展 `generateFromConfig` / `LevelConfig`：`movesBack`、`moveBuffer`、`seed`
+- [x] 多类别场景下生成器正常产出布局（含 12 类调试上限）
+- [x] 总牌数较多时 tableau / stock 分配见 `tableauStackCount`
 - [x] **新增 `t2s` 反向操作**：Tableau 顶牌 → Stock 头部，解决 Foundation 清空后 `appliedMoves < movesBack` 的问题
 
 > **牌数分配规则**：tableau 固定 4 叠（2/3/4/5 张），共 14 张；其余牌进入 stock。
@@ -246,78 +246,76 @@ Phase 4     表现层              → 动效、手感、美术（最后做）
 
 ### M9 — 调试面板
 
-> 仅在开发阶段可见，生产构建时隐藏（通过 `import.meta.env.DEV` 判断）。
+> 仅在开发阶段可见（`import.meta.env.DEV`）。
 
-- [ ] 页面右侧或底部折叠的调试面板，包含：
-  - 类别数量滑块（2-5）
-  - 每类牌数滑块（3-7，可独立调整每类）
-  - movesBack 滑块（10-40）
-  - 步数余量倍率输入框（默认 1.6）
-  - 「生成并应用」按钮
-- [ ] 面板显示当前局面统计：总牌数、理论最少步数、步数上限
-- [ ] 支持 seed 输入框，可固定随机种子复现同一布局
-
-**Phase 3_a 验收**：可在调试面板中切换「2类AB各3张」到「5类ABCDE各4-6张」并正常游玩。
+- [x] 折叠调试面板：类别数 **2–12**、每类牌数 **2–8**、`movesBack` **8–150**、`moveBuffer` **0–150**、随机种子
+- [x] 「生成并应用」、统计区（含 `preciseCost` / `movesLimit` / `t2sCount` 等）
+- [x] Phase 3_b：「贪心 Bot ×100」按钮，弹窗显示通关率（供填写标定表）
 
 ---
 
-### ⚠️ M9b — 卡牌翻开状态（faceUp）【关键机制，立即验证】
+### M9b — 卡牌翻开状态（faceUp）✅
 
-> **这是影响整个游戏可玩性的核心设定，必须在难度标定之前完成。**
->
-> 当前实现中所有牌初始可见，与真实规则不符。
-
-**规则**：
-- 初始发牌后，每叠 Tableau **仅顶牌翻开**，其余全部背面朝下
-- 背面朝下的牌**不可见、不可移动、不参与任何合并**
-- 顶部牌被移走后，下方第一张自动翻开（变为 faceUp）
-- 即使两张同类别牌相邻，下方那张若背面朝下，不会自动合并
-- Stock 全部背面朝下，抽出后翻开进入 Discard
+**规则**（已实现）：
+- Tableau 仅顶牌翻开；移走顶牌后下一张翻开；Stock 全背面，抽出后翻开进 Discard
+- 背面牌不可移动、不参与合并
 
 **实现范围**：
-- [ ] `types/game.ts`：`Card` 新增 `faceUp: boolean`
-- [ ] `game/GameState.ts`：`initGameState` 设初始翻开状态；`applyMove` 移走顶牌后翻开新顶牌；`drawFromStock` 抽牌时翻开
-- [ ] `game/MoveValidator.ts`：`getMovableGroup` 遇到 `faceUp=false` 的牌即停止
-- [ ] `game/LevelGenerator.ts` / `data/levels.ts`：生成的 Card 默认 `faceUp: false`
-- [ ] `ui/CardRenderer.ts`：直接使用 `card.faceUp` 决定渲染方式，替换原有的深度计算
+- [x] `types/game.ts`：`faceUp`
+- [x] `GameState.ts` / `MoveValidator.ts` / `LevelGenerator` / `CardRenderer.ts`
 
-**验收**：初始布局只有各叠顶牌可见；移走顶牌后下一张翻开；背面朝下的牌无法被选中或拖动。
+**Phase 3_a 验收**：✅ 调试面板可从少量类到多类、多牌数生成并正常游玩。
 
 ---
 
-## Phase 3_b — 难度系统验证
+## Phase 3_b — 难度系统验证（进行中）
 
-> 目标：在做固定关卡之前，用贪心 Bot 验证参数与难度的实际对应关系。
+> 目标：用贪心 Bot 标定参数；**每一档**要求：**类别总数 > 8**，生成局 **步数上限（movesLimit）> 100**（以调试面板统计为准，可调 `movesBack` / `moveBuffer`）。
 
-> **[技术备注]** 不使用依赖图。难度以「贪心 Bot 通关率」为核心指标。
-> 贪心 Bot 策略：每步优先选「能直接送入 Foundation」的操作，其次选「能暴露新底牌」的操作，否则抽 Stock。
+> **实现顺序（已定）**  
+> 1. 调试面板：`movesBack` 上限 **150**、每类牌数上限 **8**、类别数上限 **12**（`CATEGORY_NAMES` A–L）  
+> 2. `GreedyBot.ts`：贪心策略 + 批量测试  
+> 3. 难度表格 + `data/difficultyPresets.ts` 初版预设（实测列留空）
 
-> **[评注 — Bot 的职责边界]** 本阶段 Bot 的唯一职责是**难度标定**（测通关率 → 校准参数）。
-> **Bot 不负责可解性验证**——可解性由倒推生成法在生成阶段直接保证，无需 Bot 二次确认。
-> 「随机生成 + Bot 验证可解性 + 不可解重试」属于已放弃的方向B，见 design.md §3.4 评注。
+> **[技术备注]** 贪心策略：优先最优 Foundation 走法（含消除）→ 能翻开底牌的 Tableau 移动 → 其余合法移动 → 抽 Stock → Stock 空则洗牌进 Stock。
 
-### M10 — 贪心 Bot 实现
+> **[Bot 职责]** 仅**难度标定**，不参与可解性证明（倒推生成已保证可解）。
 
-- [ ] `game/GreedyBot.ts`：
-  - `runGreedyBot(state): boolean`：模拟一局，返回是否通关
-  - `batchTest(levelConfig, sampleSize): { passRate, avgMoves, minMoves, maxMoves }`：批量生成 N 个布局并测试
-- [ ] 在调试面板中增加「Bot 批量测试」按钮，显示 100 局通关率
+> **[评注 — Stock 代价漏算 bug，已修复]** 发现所有会进入 Stock 的反向操作（`f2s`、`t2s`、以及生成结束时 flush 进 Stock 的剩余牌）均只按 1 步计入 `preciseCost`，但正向游戏中使用一张 Stock 牌的最少代价是 **2 步**：① 点击 Stock 翻到 Discard（1 步）② 从 Discard 移动到目标（1 步）。漏算导致 movesBack 设置偏低时 movesLimit 远小于实际所需（例如 movesBack=8、58 张牌 flush 进 Stock，理论最少需 58×2+8=124 步，但原来 movesLimit 仅约 28 步），局面结构性不可完成。
+> **修复**：`f2s` / `t2s` 代价改为 2；flush 段落 `preciseCost += flushedCount * 2`。
+> 见 `src/game/LevelGenerator.ts`。
 
-### M11 — 难度参数标定
+### M10 — 贪心 Bot ✅
 
-- [ ] 用 Bot 跑以下参数组合，记录通关率，确认难度梯度：
+- [x] `game/GreedyBot.ts`：`runGreedyBot` / `runGreedyBotDetailed`、`batchGreedyTest(config, 100)`
+- [x] 调试面板「🤖 贪心 Bot ×100（当前参数）」→ `alert` 通关率、胜局用步统计
 
-  | 档位 | 类别数 | 各类牌数 | movesBack | 目标 Bot 通关率 |
-  |------|--------|----------|-----------|----------------|
-  | 简单 | 2      | 3        | 12        | 80%+           |
-  | 普通 | 3      | 4        | 20        | 55-70%         |
-  | 困难 | 4      | 5        | 28        | 30-45%         |
-  | 挑战 | 5      | 5-6      | 35        | 15-25%         |
+> **[评注 — Bot 策略优先级 bug，已修复]** 原策略优先级：Foundation → 翻底牌 → **任意合法走法（t2t）→ 抽 Stock**。这导致只要 Tableau 里有任何合法的 t2t 走法（哪怕毫无意义），Bot 就永远不去抽 Stock，Stock 里的关键牌（基座牌等）永远出不来，通关率降至 0–1%。
+>
+> **第二个 bug**：当 Stock/Discard 耗尽、只剩 t2t 走法时，`moves[0]` 可能是 stackA→stackB，下一轮又变成 stackB→stackA，无限来回循环，耗光所有步数。
+>
+> **修复**：  
+> ① 优先级改为：Foundation → 翻底牌 → **抽 Stock → 洗牌 → 任意 t2t（最后手段）**；  
+> ② 新增 `LastAction` 追踪，t2t 走法若与上一步互为逆转则跳过，彻底消除循环。  
+> 见 `src/game/GreedyBot.ts`。
 
-- [ ] 若实测通关率与目标偏差 > 15%，调整参数后重测
-- [ ] 将标定结果写入 `data/difficultyPresets.ts`，作为后续关卡设计的基准
+### M11 — 难度参数标定（待你填表）
 
-**Phase 3_b 验收**：4档难度的 Bot 通关率符合目标区间，参数与难度关系可重复验证。
+- [ ] 按下面各档在面板中对齐参数（或从 `DIFFICULTY_CALIBRATION_TABLE` 抄 `config`），各跑 Bot×100，将 **实测 Bot 通关率** 填入表内 / `difficultyPresets.ts` 的 `measuredPassRate`
+- [ ] 若与目标区间偏差 > 15%，调整 `movesBack`、`moveBuffer` 或牌数后重测
+
+  | 档位 | 类别数 | 各类牌数（约） | movesBack | moveBuffer | 目标 Bot 通关率 | 实测 Bot 通关率（填写） |
+  |------|--------|----------------|-----------|------------|-----------------|-------------------------|
+  | 简单 | 9      | 4              | 95        | 28         | 80%+            |                         |
+  | 普通 | 10     | 5              | 110       | 22         | 55–70%          |                         |
+  | 困难 | 11     | 5              | 125       | 18         | 30–45%          |                         |
+  | 挑战 | 12     | 6              | 140       | 15         | 15–25%          |                         |
+
+  > 生成后请在面板统计中确认 **步数上限 > 100**；不足则增大 `movesBack` 或 `moveBuffer`。
+
+- [x] 初版预设已写入 `data/difficultyPresets.ts`（`DIFFICULTY_CALIBRATION_TABLE`）
+
+**Phase 3_b 验收**：在约定参数下 Bot×100 可稳定弹出结果；四档实测通关率填表完毕且梯度合理（允许迭代调参）。
 
 ---
 
@@ -362,5 +360,6 @@ Phase 4     表现层              → 动效、手感、美术（最后做）
 ## 当前优先级（v2）
 
 ```
-现在做 → M8（扩展生成器配置，Phase 3_a 开始）
+Phase 3_a ✅ 已完成并验收
+现在做 → Phase 3_b / M11（用调试面板 + Bot×100 填标定表）
 ```
