@@ -6,10 +6,6 @@ import { createCardEl } from './CardRenderer'
 import { isGamePaused } from './MenuHandler'
 import { animateLift, animateFlyTo, animateSnapBack } from '../animations/CardAnimations'
 
-const CARD_OVERLAP_PX = 42  // px, must match --card-overlap in CSS
-const CARD_W_PX = 108       // px, must match --card-w in CSS
-const CARD_H_PX = 144       // px, must match --card-h in CSS
-
 // Module-level state ref — updated on each new game
 let _state: GameState | null = null
 let _onStateChange: ((s: GameState) => void) | null = null
@@ -40,14 +36,15 @@ interface DragSession {
   cards: Card[]
   ghostEl: HTMLElement     // container holding the ghost card stack
   originEl: HTMLElement    // original DOM element(s) container
-  originRect: DOMRect      // bounding rect at drag start (for snap-back)
+  originRect: DOMRect      // bounding rect at drag start (for snap-back); width/height = cardW/cardH
   offsetX: number
   offsetY: number
+  cardOverlap: number      // px derived from grabbed card width at drag-start (cardW * 0.39)
 }
 
 let session: DragSession | null = null
 
-function buildGhost(cards: Card[]): HTMLElement {
+function buildGhost(cards: Card[], cardW: number, cardH: number, cardOverlap: number): HTMLElement {
   const ghost = document.createElement('div')
   ghost.style.cssText = `
     position: fixed;
@@ -55,13 +52,12 @@ function buildGhost(cards: Card[]): HTMLElement {
     z-index: 2000;
     transform-origin: top center;
   `
-  const OVERLAP = CARD_OVERLAP_PX
-  ghost.style.width = `${CARD_W_PX}px`
-  ghost.style.height = `${CARD_H_PX + (cards.length - 1) * OVERLAP}px`
+  ghost.style.width = `${cardW}px`
+  ghost.style.height = `${cardH + (cards.length - 1) * cardOverlap}px`
 
   cards.forEach((card, i) => {
     const el = createCardEl(card)
-    el.style.top = `${i * OVERLAP}px`
+    el.style.top = `${i * cardOverlap}px`
     el.classList.add('dragging')
     // Non-top cards in the ghost stack should show the peek label, same as tableau
     if (i < cards.length - 1) el.classList.add('is-covered')
@@ -89,9 +85,10 @@ function getDragDropProbe(clientX: number, clientY: number): { x: number; y: num
   if (!session || session.cards.length === 0) return { x: clientX, y: clientY }
   const gx = clientX - session.offsetX
   const gy = clientY - session.offsetY
+  // originRect.width/height = grabbed card's rendered cardW/cardH
   return {
-    x: gx + CARD_W_PX / 2,
-    y: gy + CARD_H_PX / 2,
+    x: gx + session.originRect.width / 2,
+    y: gy + session.originRect.height / 2,
   }
 }
 
@@ -150,7 +147,7 @@ function getDropTargetRect(target: MoveTarget, state: GameState): DOMRect | null
 
   return new DOMRect(
     stackRect.left,
-    stackRect.top + cardCount * CARD_OVERLAP_PX,
+    stackRect.top + cardCount * session!.cardOverlap,
     stackRect.width,
     stackRect.height,
   )
@@ -224,8 +221,13 @@ function onPointerDown(e: PointerEvent): void {
 
   const groupSize = movingCards.length
   const grabbedRect = cardEl.getBoundingClientRect()
+  // Derive pixel metrics from the actual rendered card rect — reliable on any screen size.
+  // cardOverlap ratio (0.39) matches CSS: calc(var(--card-w) * 0.39)
+  const cardW = grabbedRect.width
+  const cardH = grabbedRect.height
+  const cardOverlap = cardW * 0.39
 
-  // Ghost layout: movingCards[0] at internal top:0, … last card at top:(groupSize-1)*OVERLAP.
+  // Ghost layout: movingCards[0] at internal top:0, … last card at top:(groupSize-1)*cardOverlap.
   // Position ghost so the grabbed card stays under the pointer (no jump).
   let indexInGroup = 0
   if (source.kind === 'tableau') {
@@ -236,9 +238,9 @@ function onPointerDown(e: PointerEvent): void {
   }
 
   const ghostLeft = grabbedRect.left
-  const ghostTop = grabbedRect.top - indexInGroup * CARD_OVERLAP_PX
+  const ghostTop = grabbedRect.top - indexInGroup * cardOverlap
 
-  const ghost = buildGhost(movingCards)
+  const ghost = buildGhost(movingCards, cardW, cardH, cardOverlap)
   ghost.style.left = `${ghostLeft}px`
   ghost.style.top  = `${ghostTop}px`
 
@@ -247,9 +249,11 @@ function onPointerDown(e: PointerEvent): void {
     cards: movingCards,
     ghostEl: ghost,
     originEl: cardEl,
-    originRect: new DOMRect(ghostLeft, ghostTop, grabbedRect.width, grabbedRect.height),
+    // Store grabbed card dimensions in originRect.width/height for later probe calculations
+    originRect: new DOMRect(ghostLeft, ghostTop, cardW, cardH),
     offsetX: e.clientX - ghostLeft,
     offsetY: e.clientY - ghostTop,
+    cardOverlap,
   }
 
   setSourceVisibility(source, false)
@@ -277,11 +281,12 @@ function onPointerUp(e: PointerEvent): void {
   if (target) {
     const next = applyMove({ source: session.source, target }, state)
     if (next) {
-      // Fly ghost to target position, then trigger state change
+      // Fly ghost to target position, then trigger state change.
+      // Compute targetRect BEFORE nulling session — getDropTargetRect reads session.cardOverlap.
       const capturedSession = session
+      const targetRect = getDropTargetRect(target, state)
       session = null  // block new drags during flight
 
-      const targetRect = getDropTargetRect(target, state)
       if (targetRect) {
         // Kill any in-progress lift tween so fly-to takes over cleanly
         gsap.killTweensOf(capturedSession.ghostEl)

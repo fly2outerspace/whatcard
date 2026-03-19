@@ -8,7 +8,7 @@ import { initDebugPanel, setDebugConfig, updateDebugStats } from './ui/DebugPane
 import { generateFromConfig, DEFAULT_CONFIG } from './game/LevelGenerator'
 import type { LevelConfig } from './game/LevelGenerator'
 import type { LevelData, GameState } from './types/game'
-import { LEVELS, LEVEL_CONFIGS } from './data/levels'
+import { LEVEL_CONFIGS, generateCampaignLevel } from './data/levels'
 import {
   animateCardFlip,
   animateStockDraw,
@@ -235,7 +235,7 @@ function startCampaignLevel(level: number): void {
   saveProgress(currentLevel)
   // Align debug panel baseline to this campaign level config (DEV only).
   setDebugConfig(LEVEL_CONFIGS[currentLevel - 1])
-  startGame(LEVELS[currentLevel - 1])
+  startGame(generateCampaignLevel(currentLevel))
 }
 
 // ── Debug panel integration ─────────────────────────────────

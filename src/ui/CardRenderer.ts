@@ -1,9 +1,6 @@
 import type { GameState, Card } from '../types/game'
 
-const CARD_OVERLAP = 42  // px, must match --card-overlap in CSS
-const CARD_H = 144       // px, must match --card-h in CSS
-const CARD_FAN = 38      // px, must match --card-fan in CSS
-/** Vertical offset per stock back layer; must match `.stock-back-layer` top step in CSS */
+/** Vertical offset per stock back layer; must match `--stock-layer-step` in CSS */
 const STOCK_LAYER_STEP_PX = 4
 
 /**
@@ -69,16 +66,15 @@ function renderTableau(state: GameState): void {
     if (!el) return
     el.innerHTML = ''
 
-    // Set container height to fit all cards
+    // Use CSS vars so the browser resolves clamp/calc — no JS pixel arithmetic needed
     const cardCount = stack.cards.length
-    const height = cardCount === 0
-      ? CARD_H
-      : CARD_H + (cardCount - 1) * CARD_OVERLAP
-    el.style.minHeight = `${height}px`
+    el.style.minHeight = cardCount === 0
+      ? 'var(--card-h)'
+      : `calc(var(--card-h) + ${cardCount - 1} * var(--card-overlap))`
 
     stack.cards.forEach((card, depth) => {
       const cardEl = createCardEl(card, !card.faceUp)
-      cardEl.style.top = `${depth * CARD_OVERLAP}px`
+      cardEl.style.top = depth === 0 ? '0px' : `calc(${depth} * var(--card-overlap))`
       cardEl.dataset.stackIndex = String(stackIndex)
       cardEl.dataset.depth = String(depth)
       // Mark face-up cards that are covered by another card on top
@@ -173,7 +169,7 @@ function renderStock(state: GameState): void {
     const layerCount = Math.min(4, state.stock.length)
     // Grow pile box so bottom includes the lowest back layer (flex bottom-align works)
     const extraBottom = (layerCount - 1) * STOCK_LAYER_STEP_PX
-    el.style.minHeight = `${CARD_H + extraBottom}px`
+    el.style.minHeight = `calc(var(--card-h) + ${extraBottom}px)`
 
     for (let i = layerCount - 1; i >= 0; i--) {
       const backEl = document.createElement('div')
@@ -204,7 +200,7 @@ function renderDiscard(state: GameState): void {
 
   // Show up to 3 top cards fanned horizontally.
   // Newest card (top of stack) is leftmost; older cards extend to the right.
-  // Each older card is offset by CARD_FAN px and sits behind the newer card.
+  // Each older card is offset by --card-fan px and sits behind the newer card.
   const visibleCount = Math.min(state.discard.length, 3)
   const visibleCards = state.discard.slice(-visibleCount).reverse()
   // visibleCards[0] = newest (leftmost, on top), [1] = second, [2] = oldest visible
@@ -212,7 +208,7 @@ function renderDiscard(state: GameState): void {
   visibleCards.forEach((card, i) => {
     const cardEl = createCardEl(card)
     cardEl.style.position = 'absolute'
-    cardEl.style.left = `${i * CARD_FAN}px`
+    cardEl.style.left = i === 0 ? '0px' : `calc(${i} * var(--card-fan))`
     cardEl.style.top = '0'
     cardEl.style.zIndex = String(visibleCount - i)  // newest has highest z-index
 

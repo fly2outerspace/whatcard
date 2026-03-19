@@ -1,5 +1,8 @@
 import { gsap } from 'gsap'
 
+/** Stock→discard flip: short phases keep pace snappy but long enough to read the flip. */
+const STOCK_DRAW_PHASE_S = 0.075
+
 // ── Drag animations ────────────────────────────────────────
 
 /**
@@ -63,7 +66,7 @@ export function animateCardFlip(el: HTMLElement): void {
   gsap.fromTo(
     el,
     { rotationY: -90, opacity: 0 },
-    { rotationY: 0, opacity: 1, duration: 0.3, ease: 'power2.out' },
+    { rotationY: 0, opacity: 1, duration: 0.48, ease: 'power2.out' },
   )
 }
 
@@ -75,6 +78,7 @@ export function animateCardFlip(el: HTMLElement): void {
  *   Phase 1 — face-down card compresses horizontally to a thin line  (scaleX 1→0)
  *   Mid     — card face is revealed (remove .flip-back)
  *   Phase 2 — face-up card expands and lands on the discard pile     (scaleX 0→1)
+ *   Duration per phase: STOCK_DRAW_PHASE_S (~75ms).
  *
  * @param stockRect   BoundingClientRect of the stock pile (captured before syncState)
  * @param discardCardEl  The newly rendered face-up card inside #discard-pile
@@ -95,16 +99,22 @@ export function animateStockDraw(stockRect: DOMRect, discardCardEl: HTMLElement)
     .fromTo(
       discardCardEl,
       { x: dx, y: dy, scaleX: 1 },
-      { x: dx * 0.5, y: dy * 0.5, scaleX: 0, duration: 0.035, ease: 'power3.in' },
+      {
+        x: dx * 0.5,
+        y: dy * 0.5,
+        scaleX: 0,
+        duration: STOCK_DRAW_PHASE_S,
+        ease: 'power3.in',
+      },
     )
-    // Mid-flip: one-frame white line visible here; reveal face-up card
+    // Mid-flip: thin edge; reveal face-up card
     .add(() => discardCardEl.classList.remove('flip-back'))
-    // Phase 2: face-up card expands and lands (~35ms)
+    // Phase 2: face-up card expands and lands on discard
     .to(discardCardEl, {
       x: 0,
       y: 0,
       scaleX: 1,
-      duration: 0.035,
+      duration: STOCK_DRAW_PHASE_S,
       ease: 'power3.out',
     })
 }
@@ -130,13 +140,14 @@ export function animateElimination(slotEl: HTMLElement): void {
  * Win: overlay content bounces in from below.
  */
 export function animateWinOverlay(contentEl: HTMLElement): void {
-  gsap.set(contentEl, { opacity: 0, scale: 0.45, y: 50 })
+  gsap.set(contentEl, { opacity: 0, scale: 0.45, y: 36 })
   gsap.to(contentEl, {
     opacity: 1,
     scale: 1,
     y: 0,
-    duration: 0.6,
-    ease: 'back.out(2.2)',
+    duration: 0.55,
+    // Strong back.out overshoots past scale 1 — clips on short mobile viewports
+    ease: 'back.out(1.25)',
   })
 }
 
