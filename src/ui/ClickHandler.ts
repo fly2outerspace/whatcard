@@ -1,5 +1,5 @@
 import type { GameState, MoveSource, MoveTarget } from '../types/game'
-import { isValidMove, getMovingCards } from '../game/MoveValidator'
+import { getMovingCards } from '../game/MoveValidator'
 import { applyMove, drawFromStock, reshuffleDiscard } from '../game/GameState'
 import { isGamePaused } from './MenuHandler'
 
@@ -20,6 +20,10 @@ export function updateHandlerState(
 ): void {
   _state = state
   _onStateChange = onStateChange
+  // Clear any lingering selection visual on state change
+  document.querySelectorAll<HTMLElement>('.card.selected').forEach(el =>
+    el.classList.remove('selected')
+  )
   selection.source = null
 }
 
@@ -33,7 +37,7 @@ function emit(next: GameState): void {
   _onStateChange?.(next)
 }
 
-// ── Selection highlight ────────────────────────────────────
+// ── Selection highlight (source card only) ──────────────────
 
 function setSelectionHighlight(source: MoveSource | null, state: GameState, active: boolean): void {
   if (!source) return
@@ -54,24 +58,9 @@ function setSelectionHighlight(source: MoveSource | null, state: GameState, acti
     })
 }
 
-function highlightValidTargets(source: MoveSource, state: GameState, active: boolean): void {
-  document.querySelectorAll<HTMLElement>('.foundation-slot').forEach(el => {
-    const slotIndex = Number(el.dataset.slotIndex)
-    const target: MoveTarget = { kind: 'foundation', slotIndex }
-    el.classList.toggle('highlight', active && isValidMove(source, target, state))
-  })
-
-  document.querySelectorAll<HTMLElement>('.tableau-stack').forEach(el => {
-    const stackIndex = Number(el.dataset.stackIndex)
-    const target: MoveTarget = { kind: 'tableau', stackIndex }
-    el.classList.toggle('highlight', active && isValidMove(source, target, state))
-  })
-}
-
 function clearSelection(): void {
   const state = getState()
   setSelectionHighlight(selection.source, state, false)
-  if (selection.source) highlightValidTargets(selection.source, state, false)
   selection.source = null
 }
 
@@ -126,7 +115,6 @@ export function initClickHandler(
     clearSelection()
     selection.source = { kind: 'discard' }
     setSelectionHighlight(selection.source, state, true)
-    highlightValidTargets(selection.source, state, true)
   })
 
   // Foundation slots
@@ -148,7 +136,7 @@ export function initClickHandler(
     const stack = state.tableau[stackIndex]
     const cardEl = (e.target as HTMLElement).closest<HTMLElement>('.card')
 
-    // Click on empty area or card while something selected → try move there
+    // Click while something selected → try move there
     if (selection.source) {
       const target: MoveTarget = { kind: 'tableau', stackIndex }
       const next = applyMove({ source: selection.source, target }, state)
@@ -171,6 +159,5 @@ export function initClickHandler(
 
     selection.source = { kind: 'tableau', stackIndex, cardCount: 1 }
     setSelectionHighlight(selection.source, state, true)
-    highlightValidTargets(selection.source, state, true)
   })
 }

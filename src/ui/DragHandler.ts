@@ -1,8 +1,14 @@
+import { gsap } from 'gsap'
 import type { GameState, MoveSource, MoveTarget, Card } from '../types/game'
 import { isValidMove, getMovingCards } from '../game/MoveValidator'
 import { applyMove } from '../game/GameState'
 import { createCardEl } from './CardRenderer'
 import { isGamePaused } from './MenuHandler'
+import { animateLift, animateFlyTo, animateSnapBack } from '../animations/CardAnimations'
+
+const CARD_OVERLAP_PX = 42  // px, must match --card-overlap in CSS
+const CARD_W_PX = 108       // px, must match --card-w in CSS
+const CARD_H_PX = 144       // px, must match --card-h in CSS
 
 // Module-level state ref — updated on each new game
 let _state: GameState | null = null
@@ -34,6 +40,7 @@ interface DragSession {
   cards: Card[]
   ghostEl: HTMLElement     // container holding the ghost card stack
   originEl: HTMLElement    // original DOM element(s) container
+  originRect: DOMRect      // bounding rect at drag start (for snap-back)
   offsetX: number
   offsetY: number
 }
@@ -46,17 +53,18 @@ function buildGhost(cards: Card[]): HTMLElement {
     position: fixed;
     pointer-events: none;
     z-index: 2000;
-    transform-origin: top left;
+    transform-origin: top center;
   `
-  const OVERLAP = 28
-  ghost.style.width = '72px'
-  ghost.style.height = `${96 + (cards.length - 1) * OVERLAP}px`
+  const OVERLAP = CARD_OVERLAP_PX
+  ghost.style.width = `${CARD_W_PX}px`
+  ghost.style.height = `${CARD_H_PX + (cards.length - 1) * OVERLAP}px`
 
   cards.forEach((card, i) => {
     const el = createCardEl(card)
     el.style.top = `${i * OVERLAP}px`
-    el.style.opacity = '0.9'
     el.classList.add('dragging')
+    // Non-top cards in the ghost stack should show the peek label, same as tableau
+    if (i < cards.length - 1) el.classList.add('is-covered')
     ghost.appendChild(el)
   })
 
@@ -70,9 +78,6 @@ function moveGhost(x: number, y: number): void {
   session.ghostEl.style.top = `${y - session.offsetY}px`
 }
 
-function removeGhost(): void {
-  session?.ghostEl.remove()
-}
 
 // ── Hit testing ────────────────────────────────────────────
 
@@ -105,21 +110,31 @@ function findDropTarget(x: number, y: number, state: GameState): MoveTarget | nu
   return null
 }
 
-function highlightTarget(target: MoveTarget | null): void {
-  document.querySelectorAll('.foundation-slot, .tableau-stack').forEach(el =>
-    el.classList.remove('highlight')
-  )
-  if (!target) return
 
+// ── Get rect for the drop target (where ghost should fly to) ──
+
+function getDropTargetRect(target: MoveTarget, state: GameState): DOMRect | null {
   if (target.kind === 'foundation') {
-    document
-      .querySelector(`.foundation-slot[data-slot-index="${target.slotIndex}"]`)
-      ?.classList.add('highlight')
-  } else {
-    document
-      .querySelector(`.tableau-stack[data-stack-index="${target.stackIndex}"]`)
-      ?.classList.add('highlight')
+    return document
+      .querySelector<HTMLElement>(`.foundation-slot[data-slot-index="${target.slotIndex}"]`)
+      ?.getBoundingClientRect() ?? null
   }
+
+  // Tableau: the new card lands on top of the current stack
+  const stackEl = document.querySelector<HTMLElement>(
+    `.tableau-stack[data-stack-index="${target.stackIndex}"]`
+  )
+  if (!stackEl) return null
+
+  const stackRect = stackEl.getBoundingClientRect()
+  const cardCount = state.tableau[target.stackIndex].cards.length
+
+  return new DOMRect(
+    stackRect.left,
+    stackRect.top + cardCount * CARD_OVERLAP_PX,
+    stackRect.width,
+    stackRect.height,
+  )
 }
 
 // ── Hide/show source cards during drag ─────────────────────
@@ -147,6 +162,15 @@ function setSourceVisibility(source: MoveSource, visible: boolean): void {
 
 function onPointerDown(e: PointerEvent): void {
   if (isGamePaused()) return
+
+  // Guard: don't start a new drag while an animation is in progress
+  if (session) return
+
+  // Clear any stale click-selection visual before starting drag
+  document.querySelectorAll<HTMLElement>('.card.selected').forEach(el =>
+    el.classList.remove('selected')
+  )
+
   const cardEl = (e.target as HTMLElement).closest<HTMLElement>('.card')
   if (!cardEl || cardEl.classList.contains('face-down')) return
 
@@ -177,21 +201,35 @@ function onPointerDown(e: PointerEvent): void {
 
   e.preventDefault()
 
-  const rect = cardEl.getBoundingClientRect()
+  const topCardRect = cardEl.getBoundingClientRect()
+  const groupSize = movingCards.length
+
+  // movingCards is ordered bottom-to-top (cards.slice), so cards[0] is the
+  // bottommost card of the group, rendered first in the ghost at top:0.
+  // The ghost must be positioned at cards[0]'s screen position, NOT the top
+  // card's position — otherwise the entire group is offset downward by
+  // (groupSize-1)*OVERLAP pixels, causing the fly-to misalignment bug.
+  const ghostLeft = topCardRect.left
+  const ghostTop  = topCardRect.top - (groupSize - 1) * CARD_OVERLAP_PX
+
   const ghost = buildGhost(movingCards)
-  ghost.style.left = `${rect.left}px`
-  ghost.style.top = `${rect.top}px`
+  ghost.style.left = `${ghostLeft}px`
+  ghost.style.top  = `${ghostTop}px`
 
   session = {
     source,
     cards: movingCards,
     ghostEl: ghost,
     originEl: cardEl,
-    offsetX: e.clientX - rect.left,
-    offsetY: e.clientY - rect.top,
+    originRect: new DOMRect(ghostLeft, ghostTop, topCardRect.width, topCardRect.height),
+    offsetX: e.clientX - ghostLeft,
+    offsetY: e.clientY - ghostTop,
   }
 
   setSourceVisibility(source, false)
+
+  // Lift animation — ghost scales up slightly
+  animateLift(ghost)
 
   // Capture pointer so we keep getting events even outside the element
   ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
@@ -201,10 +239,6 @@ function onPointerMove(e: PointerEvent): void {
   if (!session) return
   e.preventDefault()
   moveGhost(e.clientX, e.clientY)
-
-  const state = getState()
-  const target = findDropTarget(e.clientX, e.clientY, state)
-  highlightTarget(target)
 }
 
 function onPointerUp(e: PointerEvent): void {
@@ -213,21 +247,38 @@ function onPointerUp(e: PointerEvent): void {
   const state = getState()
   const target = findDropTarget(e.clientX, e.clientY, state)
 
-  highlightTarget(null)
-  removeGhost()
-
   if (target) {
     const next = applyMove({ source: session.source, target }, state)
     if (next) {
-      session = null
-      emit(next)
+      // Fly ghost to target position, then trigger state change
+      const capturedSession = session
+      session = null  // block new drags during flight
+
+      const targetRect = getDropTargetRect(target, state)
+      if (targetRect) {
+        // Kill any in-progress lift tween so fly-to takes over cleanly
+        gsap.killTweensOf(capturedSession.ghostEl)
+        animateFlyTo(capturedSession.ghostEl, targetRect, () => {
+          capturedSession.ghostEl.remove()
+          emit(next)
+        })
+      } else {
+        capturedSession.ghostEl.remove()
+        emit(next)
+      }
       return
     }
   }
 
-  // Invalid drop — restore source visibility
-  setSourceVisibility(session.source, true)
-  session = null
+  // Invalid drop — snap ghost back to origin
+  const capturedSession = session
+  session = null  // block new drags during snap-back
+
+  gsap.killTweensOf(capturedSession.ghostEl)
+  animateSnapBack(capturedSession.ghostEl, capturedSession.originRect, () => {
+    setSourceVisibility(capturedSession.source, true)
+    capturedSession.ghostEl.remove()
+  })
 }
 
 // ── Init (once) ────────────────────────────────────────────

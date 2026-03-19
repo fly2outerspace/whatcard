@@ -68,7 +68,9 @@ export function reshuffleDiscard(state: GameState): GameState | null {
   if (state.discard.length === 0) return null
 
   const next = cloneState(state)
-  next.stock = [...next.discard].reverse().map(c => ({ ...c, faceUp: false }))
+  // Discard order matches original stock draw order (oldest at index 0, newest at end).
+  // Stock index 0 is "next to draw", so copy discard forward — do NOT reverse.
+  next.stock = next.discard.map(c => ({ ...c, faceUp: false }))
   next.discard = []
   next.movesLeft--
   return checkEndCondition(next)

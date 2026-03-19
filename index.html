@@ -8,13 +8,21 @@
   </head>
   <body>
     <div id="app">
-      <!-- Top bar -->
+      <!-- Row 1: menu (left) + moves counter (screen center) -->
       <div id="top-bar">
         <button id="menu-btn" aria-label="菜单">&#9776;</button>
         <div id="moves-counter">
           <span class="label">剩余步数</span>
           <span id="moves-value">--</span>
         </div>
+      </div>
+
+      <!-- Row 2: stock + discard — aligned to top-right of content -->
+      <div id="stock-area">
+        <div id="stock-pile" title="点击抽牌">
+          <span class="stock-count">0</span>
+        </div>
+        <div id="discard-pile"></div>
       </div>
 
       <!-- Menu overlay -->
@@ -56,20 +64,12 @@
         <div class="foundation-slot" data-slot-index="3"></div>
       </div>
 
-      <!-- Tableau -->
+      <!-- Row 3+: tableau -->
       <div id="tableau-area">
         <div class="tableau-stack" data-stack-index="0"></div>
         <div class="tableau-stack" data-stack-index="1"></div>
         <div class="tableau-stack" data-stack-index="2"></div>
         <div class="tableau-stack" data-stack-index="3"></div>
-      </div>
-
-      <!-- Stock & Discard -->
-      <div id="stock-area">
-        <div id="stock-pile" title="点击抽牌">
-          <span class="stock-count">0</span>
-        </div>
-        <div id="discard-pile"></div>
       </div>
 
       <!-- Overlay for win/lose -->
