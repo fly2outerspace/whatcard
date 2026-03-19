@@ -9,27 +9,13 @@ export interface CategoryDef {
 
 export interface LevelConfig {
   categories: CategoryDef[]
-  movesBack: number   // reverse steps to scramble from solved state
-  moveBuffer: number  // extra moves added on top of preciseCost → movesLimit = preciseCost + moveBuffer
+  movesLimit: number  // total move budget for the level (configured directly)
   seed?: number       // fixed seed for reproducible layouts; undefined = random
 }
 
 // ── Internal types ─────────────────────────────────────────
 
-interface GenState {
-  tableau: Card[][]
-  stock: Card[]
-  foundations: Map<string, Card[]>  // category → [baseCard, ...regular], last = top
-}
-
-type ReverseMove =
-  | { kind: 'f2t'; category: string; stackIndex: number }
-  | { kind: 'f2s'; category: string }
-  // groupSize = number of cards moved together; each card costs 1 forward move (faceUp constraint)
-  | { kind: 't2t'; from: number; to: number; groupSize: number }
-  // Reverses "player drew from stock and placed card onto this tableau stack".
-  // Allows continued scrambling after all foundation cards are distributed.
-  | { kind: 't2s'; stackIndex: number }
+// NOTE: v3 direction change — generator is now Shuffle → Deal (forward dealing).
 
 // ── Card factory ───────────────────────────────────────────
 
@@ -39,103 +25,7 @@ function makeCard(category: string, isBase: boolean, index: number): Card {
   return { id, category, isBase, label, faceUp: false }  // initGameState sets actual faceUp
 }
 
-// ── Movable group (mirrors MoveValidator — no import to avoid circular dep) ──
-
-function getMovableGroup(stack: Card[]): Card[] {
-  if (stack.length === 0) return []
-  const top = stack[stack.length - 1]
-
-  if (top.isBase) {
-    let count = 1
-    for (let i = stack.length - 2; i >= 0; i--) {
-      if (stack[i].category === top.category && !stack[i].isBase) count++
-      else break
-    }
-    return stack.slice(stack.length - count)
-  } else {
-    let count = 0
-    for (let i = stack.length - 1; i >= 0; i--) {
-      if (stack[i].category === top.category && !stack[i].isBase) count++
-      else break
-    }
-    return stack.slice(stack.length - count)
-  }
-}
-
-// ── Reverse move enumeration ───────────────────────────────
-
-function getValidReverseMoves(state: GenState): ReverseMove[] {
-  const moves: ReverseMove[] = []
-
-  for (const [cat, cards] of state.foundations) {
-    if (cards.length === 0) continue
-
-    for (let si = 0; si < state.tableau.length; si++) {
-      // Any stack is valid — simulates the initial random deal where cards
-      // can be placed on top of any card regardless of category or base status.
-      // (t2t keeps same-category rules because it reverses actual game moves.)
-      moves.push({ kind: 'f2t', category: cat, stackIndex: si })
-    }
-    moves.push({ kind: 'f2s', category: cat })
-  }
-
-  for (let from = 0; from < state.tableau.length; from++) {
-    const fromStack = state.tableau[from]
-    if (fromStack.length === 0) continue
-
-    const group = getMovableGroup(fromStack)
-    const bottom = group[0]
-    const groupSize = group.length
-
-    for (let to = 0; to < state.tableau.length; to++) {
-      if (from === to) continue
-      const toStack = state.tableau[to]
-      if (toStack.length === 0) {
-        moves.push({ kind: 't2t', from, to, groupSize })
-      } else {
-        const toTop = toStack[toStack.length - 1]
-        if (!toTop.isBase && toTop.category === bottom.category) {
-          moves.push({ kind: 't2t', from, to, groupSize })
-        }
-      }
-    }
-
-    // t2s: push the single top card back to stock front.
-    // One card only — each stock draw places exactly one card.
-    moves.push({ kind: 't2s', stackIndex: from })
-  }
-
-  return moves
-}
-
-// ── Apply reverse move ─────────────────────────────────────
-
-function applyReverseMove(move: ReverseMove, state: GenState): GenState {
-  const next: GenState = {
-    tableau: state.tableau.map(s => [...s]),
-    stock: [...state.stock],
-    foundations: new Map([...state.foundations].map(([k, v]) => [k, [...v]])),
-  }
-
-  if (move.kind === 'f2t') {
-    const card = next.foundations.get(move.category)!.pop()!
-    next.tableau[move.stackIndex].push(card)
-  } else if (move.kind === 'f2s') {
-    const card = next.foundations.get(move.category)!.pop()!
-    next.stock.unshift(card)
-  } else if (move.kind === 't2t') {
-    const fromStack = next.tableau[move.from]
-    const group = getMovableGroup(fromStack)
-    fromStack.splice(fromStack.length - group.length, group.length)
-    next.tableau[move.to].push(...group)
-  } else {
-    // t2s: pop the single top card and push to the front of stock
-    const card = next.tableau[move.stackIndex].pop()!
-    next.stock.unshift(card)
-  }
-
-  return next
-}
+// (Reverse-move based generation removed in Phase 3_c refactor.)
 
 // ── Seeded PRNG (LCG) ─────────────────────────────────────
 
@@ -152,7 +42,7 @@ function seededRng(seed: number): () => number {
 
 /**
  * Decide how many tableau stacks to use based on total card count.
- * Always returns 4 for ≥ 14 cards (the canonical 2/3/4/5 layout).
+ * Always returns 4 for ≥ 12 cards (canonical layout).
  * Scales down gracefully for smaller card counts.
  */
 export function tableauStackCount(totalCards: number): number {
@@ -160,6 +50,44 @@ export function tableauStackCount(totalCards: number): number {
   if (totalCards >= 7)  return 3
   if (totalCards >= 3)  return 2
   return 1
+}
+
+// ── Tableau max depths per stack ───────────────────────────
+
+/**
+ * Compute per-stack maximum card depth for tableau, keeping right stacks ≥ left stacks.
+ *
+ * Target tableau total is derived from the 18/64 canonical ratio (the reference game uses
+ * 18 cards across 4 stacks = 3+4+5+6, leaving 46 in Stock).
+ *
+ * Algorithm:
+ *   tableauTotal = max(stackCount, floor(totalCards × 18/64))
+ *   1. Try arithmetic progression [a, a+1, …, a+S-1] that sums to tableauTotal.
+ *      Works when (tableauTotal − S*(S−1)/2) is divisible by S.
+ *      Produces the cleanest staircase (e.g. 64 cards → [3,4,5,6]).
+ *   2. Fall back: even base + distribute remainder to rightmost stacks.
+ *      Produces a nearly flat non-decreasing sequence.
+ *
+ * NOTE: these are *ceilings*, not guarantees. With low movesBack the actual
+ * tableau depth may be less than the max — see schedule.md Phase 3_b annotation.
+ */
+export function computeTableauTargetDepths(totalCards: number, stackCount: number): number[] {
+  const tableauTotal = Math.max(stackCount, Math.floor(totalCards * 18 / 64))
+  const triNum = stackCount * (stackCount - 1) / 2  // 0+1+…+(S-1)
+
+  const remainder = tableauTotal - triNum
+  if (remainder > 0 && remainder % stackCount === 0) {
+    // Perfect arithmetic progression: [a, a+1, …, a+S-1]
+    const a = remainder / stackCount
+    return Array.from({ length: stackCount }, (_, i) => a + i)
+  }
+
+  // Even distribution with extras assigned to rightmost stacks
+  const base = Math.floor(tableauTotal / stackCount)
+  const extra = tableauTotal % stackCount
+  return Array.from({ length: stackCount }, (_, i) =>
+    base + (i >= stackCount - extra ? 1 : 0)
+  )
 }
 
 // ── Core generation function ───────────────────────────────
@@ -173,86 +101,50 @@ export function generateFromConfig(config: LevelConfig): LevelData & { stats: Ge
 
   const totalCards = config.categories.reduce((s, c) => s + c.cardCount, 0)
   const stackCount = tableauStackCount(totalCards)
+  const targetDepths = computeTableauTargetDepths(totalCards, stackCount)
 
-  // Build foundations (all cards start here)
-  const foundations = new Map<string, Card[]>()
+  // Build full deck
+  const deck: Card[] = []
   for (const cat of config.categories) {
-    const cards: Card[] = []
-    cards.push(makeCard(cat.name, true, 0))
-    for (let i = 1; i < cat.cardCount; i++) {
-      cards.push(makeCard(cat.name, false, i))
-    }
-    foundations.set(cat.name, cards)
+    deck.push(makeCard(cat.name, true, 0))
+    for (let i = 1; i < cat.cardCount; i++) deck.push(makeCard(cat.name, false, i))
   }
 
-  let state: GenState = {
-    tableau: Array.from({ length: stackCount }, () => []),
-    stock: [],
-    foundations,
+  // Seeded shuffle (Fisher–Yates)
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    const tmp = deck[i]
+    deck[i] = deck[j]
+    deck[j] = tmp
   }
 
-  // Apply reverse moves, accumulating the exact forward cost at each step.
-  //
-  // Forward cost per reverse operation:
-  //   f2t  → 1   (Tableau → Foundation in the forward game: 1 move)
-  //   f2s  → 2   (Stock draw to Discard: 1 move) + (Discard → target: 1 move)
-  //   t2s  → 2   (same as f2s: draw + place)
-  //   t2t  → groupSize  (each card in the group starts face-down; the player must
-  //                      uncover and move them sequentially — one forward move per card)
-  //
-  // Stock-bound operations cost 2 because accessing a Stock card always requires two
-  // distinct moves: click Stock to reveal (draw to Discard), then move from Discard to target.
-  let appliedMoves = 0
-  let t2sCount = 0
-  let preciseCost = 0  // exact minimum forward moves to solve
-  for (let i = 0; i < config.movesBack; i++) {
-    const moves = getValidReverseMoves(state)
-    if (moves.length === 0) break
-    const move = moves[Math.floor(rng() * moves.length)]
-    if (move.kind === 't2t') {
-      preciseCost += move.groupSize
-    } else if (move.kind === 'f2s' || move.kind === 't2s') {
-      preciseCost += 2  // draw to Discard + move from Discard to target
-    } else {
-      preciseCost += 1  // f2t: direct Tableau → Foundation
-    }
-    if (move.kind === 't2s') t2sCount++
-    state = applyReverseMove(move, state)
-    appliedMoves++
-  }
-
-  // Flush remaining foundation cards to stock.
-  // Each flushed card requires 2 forward moves to use: draw to Discard (1) + place at target (1).
-  // Without this, low movesBack leaves many cards in Foundation, dumping them into Stock with
-  // no cost accounted for, making the puzzle structurally unsolvable within movesLimit.
-  let flushedCount = 0
-  for (const [, cards] of state.foundations) {
-    flushedCount += cards.length
-    while (cards.length > 0) {
-      state.stock.unshift(cards.pop()!)
+  // Deal tableau first (left → right), following non-decreasing target heights.
+  const tableau: Card[][] = Array.from({ length: stackCount }, () => [])
+  let cursor = 0
+  for (let si = 0; si < stackCount; si++) {
+    const depth = targetDepths[si] ?? 0
+    for (let d = 0; d < depth && cursor < deck.length; d++) {
+      tableau[si].push(deck[cursor++])
     }
   }
-  preciseCost += flushedCount * 2
 
-  const movesLimit = preciseCost + config.moveBuffer
-  const tableauCardCount = state.tableau.reduce((s, stack) => s + stack.length, 0)
+  // Remaining cards go to stock (index 0 = next to draw)
+  const stock = deck.slice(cursor)
+  const tableauCardCount = tableau.reduce((s, stack) => s + stack.length, 0)
 
   return {
     id: `gen-${config.seed ?? Date.now()}`,
     name: '随机关卡',
-    movesLimit,
-    tableau: state.tableau,
-    stock: state.stock,
+    movesLimit: config.movesLimit,
+    tableau,
+    stock,
     stats: {
       totalCards,
       stackCount,
+      targetDepths,
       tableauCards: tableauCardCount,
-      stockCards: state.stock.length,
-      appliedMoves,
-      t2sCount,
-      preciseCost,
-      moveBuffer: config.moveBuffer,
-      movesLimit,
+      stockCards: stock.length,
+      movesLimit: config.movesLimit,
     },
   }
 }
@@ -260,26 +152,22 @@ export function generateFromConfig(config: LevelConfig): LevelData & { stats: Ge
 export interface GenerationStats {
   totalCards: number
   stackCount: number
+  targetDepths: number[] // per-stack tableau depths (right ≥ left, derived from 18/64 ratio)
   tableauCards: number
   stockCards: number
-  appliedMoves: number   // actual reverse steps applied (may be < movesBack if stuck)
-  t2sCount: number       // how many of those were t2s (post-foundation scramble steps)
-  preciseCost: number    // exact minimum forward moves (t2t counts groupSize, others count 1)
-  moveBuffer: number     // fixed extra moves added on top of preciseCost
-  movesLimit: number     // = preciseCost + moveBuffer
+  movesLimit: number
 }
 
 // ── Convenience wrapper (backward compat) ─────────────────
 
 export function generateLevel(
   categories: CategoryDef[],
-  movesBack = 20,
+  movesLimit = 120,
   seed?: number
 ): LevelData {
   return generateFromConfig({
     categories,
-    movesBack,
-    moveBuffer: 10,
+    movesLimit,
     seed,
   })
 }
@@ -296,6 +184,5 @@ export function uniformCategories(count: number, cardCount: number): CategoryDef
 
 export const DEFAULT_CONFIG: LevelConfig = {
   categories: uniformCategories(2, 3),
-  movesBack: 18,
-  moveBuffer: 10,
+  movesLimit: 120,
 }

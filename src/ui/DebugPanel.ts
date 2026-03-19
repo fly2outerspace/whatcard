@@ -9,6 +9,7 @@ import { batchGreedyTest } from '../game/GreedyBot'
 
 let _onApply: ((config: LevelConfig) => void) | null = null
 let _currentConfig: LevelConfig | null = null
+let _lastCatCounts: number[] = Array.from({ length: CATEGORY_NAMES.length }, () => 4)
 
 // ── DOM creation ───────────────────────────────────────────
 
@@ -31,14 +32,9 @@ function createPanel(): void {
       <div id="d-cat-rows"></div>
 
       <div class="debug-row">
-        <label>movesBack <b id="dv-moves-back">18</b></label>
-        <input type="range" id="d-moves-back" min="8" max="150" value="18" step="1">
-      </div>
-
-      <div class="debug-row">
-        <label>步数缓冲（moveBuffer）</label>
-        <input type="number" id="d-move-buffer" value="10" min="0" max="150" step="1"
-               style="width:64px;padding:2px 4px;border-radius:4px;border:1px solid #ccc">
+        <label>总步数上限（movesLimit）</label>
+        <input type="number" id="d-moves-limit" value="120" min="1" max="999" step="1"
+               style="width:90px;padding:2px 4px;border-radius:4px;border:1px solid #ccc">
       </div>
 
       <div class="debug-row">
@@ -49,6 +45,13 @@ function createPanel(): void {
 
       <button id="debug-apply">⚡ 生成并应用</button>
       <button id="debug-bot-100" type="button">🤖 贪心 Bot ×100（当前参数）</button>
+      <div class="debug-row" style="margin-top:6px">
+        <label>测试快捷操作</label>
+        <div style="display:flex;gap:8px">
+          <button id="debug-force-win" type="button" style="flex:1;padding:8px;border-radius:8px;border:none;background:#a6e3a1;color:#1e1e2e;font-weight:800;cursor:pointer">强制胜利</button>
+          <button id="debug-force-lose" type="button" style="flex:1;padding:8px;border-radius:8px;border:none;background:#f38ba8;color:#1e1e2e;font-weight:800;cursor:pointer">强制失败</button>
+        </div>
+      </div>
 
       <div id="debug-stats" class="debug-stats"></div>
     </div>
@@ -77,6 +80,7 @@ function renderCatRows(catCount: number, currentCounts: number[]): void {
     row.querySelector<HTMLInputElement>(`#d-cat-${i}`)!.addEventListener('input', e => {
       const el = e.target as HTMLInputElement
       document.getElementById(`dv-cat-${i}`)!.textContent = el.value
+      _lastCatCounts[i] = Number(el.value)
     })
   }
 }
@@ -88,12 +92,9 @@ export function updateDebugStats(stats: GenerationStats): void {
   if (!el) return
   el.innerHTML = `
     <div class="stat-row"><span>总牌数</span><b>${stats.totalCards}</b></div>
-    <div class="stat-row"><span>Tableau / Stock</span><b>${stats.tableauCards} / ${stats.stockCards}</b></div>
-    <div class="stat-row"><span>反推步数（appliedMoves）</span><b>${stats.appliedMoves}</b></div>
-    <div class="stat-row"><span>其中 t2s（基座后混乱）</span><b>${stats.t2sCount}</b></div>
-    <div class="stat-row"><span>精确前向代价（preciseCost）</span><b>${stats.preciseCost}</b></div>
-    <div class="stat-row"><span>步数缓冲（moveBuffer）</span><b>+ ${stats.moveBuffer}</b></div>
-    <div class="stat-row"><span>步数上限</span><b>${stats.movesLimit}</b></div>
+    <div class="stat-row"><span>Tableau 目标深度 (L→R)</span><b>${stats.targetDepths.join(' / ')}</b></div>
+    <div class="stat-row"><span>Tableau 实际 / Stock</span><b>${stats.tableauCards} / ${stats.stockCards}</b></div>
+    <div class="stat-row"><span>步数上限（movesLimit）</span><b>${stats.movesLimit}</b></div>
   `
 }
 
@@ -101,8 +102,7 @@ export function updateDebugStats(stats: GenerationStats): void {
 
 function readConfig(): LevelConfig {
   const catCount = Number((document.getElementById('d-cat-count') as HTMLInputElement).value)
-  const movesBack = Number((document.getElementById('d-moves-back') as HTMLInputElement).value)
-  const moveBuffer = Number((document.getElementById('d-move-buffer') as HTMLInputElement).value)
+  const movesLimit = Number((document.getElementById('d-moves-limit') as HTMLInputElement).value)
   const seedRaw = (document.getElementById('d-seed') as HTMLInputElement).value.trim()
   const seed = seedRaw ? Number(seedRaw) : undefined
 
@@ -111,7 +111,7 @@ function readConfig(): LevelConfig {
     return { name, cardCount: slider ? Number(slider.value) : 3 }
   })
 
-  return { categories, movesBack, moveBuffer, seed }
+  return { categories, movesLimit, seed }
 }
 
 // ── Wire events ────────────────────────────────────────────
@@ -121,17 +121,17 @@ function wireEvents(): void {
   const content = document.getElementById('debug-content')!
   const closeBtn = document.getElementById('debug-close')!
   const catCountSlider = document.getElementById('d-cat-count') as HTMLInputElement
-  const movesBackSlider = document.getElementById('d-moves-back') as HTMLInputElement
   const applyBtn = document.getElementById('debug-apply')!
   const botBtn = document.getElementById('debug-bot-100') as HTMLButtonElement
+  const forceWinBtn = document.getElementById('debug-force-win') as HTMLButtonElement
+  const forceLoseBtn = document.getElementById('debug-force-lose') as HTMLButtonElement
 
   // Toggle panel
   toggle.addEventListener('click', () => content.classList.toggle('debug-hidden'))
   closeBtn.addEventListener('click', () => content.classList.add('debug-hidden'))
 
   // Category count change → rebuild rows
-  const defaultCatCounts = () => Array.from({ length: CATEGORY_NAMES.length }, () => 4)
-  let catCounts: number[] = defaultCatCounts()
+  let catCounts: number[] = [..._lastCatCounts]
   catCountSlider.addEventListener('input', () => {
     const n = Number(catCountSlider.value)
     document.getElementById('dv-cat-count')!.textContent = String(n)
@@ -140,11 +140,8 @@ function wireEvents(): void {
       const el = document.getElementById(`d-cat-${i}`) as HTMLInputElement | null
       if (el) catCounts[i] = Number(el.value)
     }
+    _lastCatCounts = [...catCounts]
     renderCatRows(n, catCounts)
-  })
-
-  movesBackSlider.addEventListener('input', () => {
-    document.getElementById('dv-moves-back')!.textContent = movesBackSlider.value
   })
 
   applyBtn.addEventListener('click', () => {
@@ -180,6 +177,14 @@ function wireEvents(): void {
     })
   })
 
+  forceWinBtn.addEventListener('click', () => {
+    window.dispatchEvent(new Event('whatcard:forceWin'))
+  })
+
+  forceLoseBtn.addEventListener('click', () => {
+    window.dispatchEvent(new Event('whatcard:forceLose'))
+  })
+
   // Initial cat rows
   renderCatRows(2, catCounts)
 }
@@ -201,6 +206,40 @@ export function initDebugPanel(onApply: (config: LevelConfig) => void): void {
 
 export function getDebugConfig(): LevelConfig | null {
   return _currentConfig
+}
+
+/**
+ * Sync the debug panel form UI to a given config (DEV only).
+ * This is used to align the panel with the currently active campaign level,
+ * so you can tweak from that baseline without changing product logic.
+ */
+export function setDebugConfig(config: LevelConfig): void {
+  if (!import.meta.env.DEV) return
+  _currentConfig = config
+
+  const catCount = config.categories.length
+  const catCountSlider = document.getElementById('d-cat-count') as HTMLInputElement | null
+  const movesLimitEl = document.getElementById('d-moves-limit') as HTMLInputElement | null
+  const seedEl = document.getElementById('d-seed') as HTMLInputElement | null
+
+  if (catCountSlider) {
+    catCountSlider.value = String(catCount)
+    const v = document.getElementById('dv-cat-count')
+    if (v) v.textContent = String(catCount)
+  }
+
+  // Update per-category counts
+  _lastCatCounts = Array.from({ length: CATEGORY_NAMES.length }, (_, i) => config.categories[i]?.cardCount ?? 4)
+  renderCatRows(catCount, _lastCatCounts)
+  for (let i = 0; i < catCount; i++) {
+    const slider = document.getElementById(`d-cat-${i}`) as HTMLInputElement | null
+    if (slider) slider.value = String(_lastCatCounts[i])
+    const label = document.getElementById(`dv-cat-${i}`)
+    if (label) label.textContent = String(_lastCatCounts[i])
+  }
+
+  if (movesLimitEl) movesLimitEl.value = String(config.movesLimit)
+  if (seedEl) seedEl.value = config.seed != null ? String(config.seed) : ''
 }
 
 // ── Inline styles (dev only, no production impact) ─────────

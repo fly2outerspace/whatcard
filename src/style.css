@@ -91,6 +91,54 @@ html, body {
 
 #menu-overlay.hidden { display: none; }
 
+.overlay-corner-back {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 16px;
+  min-height: 52px;
+  padding: 0 16px 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.42);
+  background: rgba(255,255,255,0.9);
+  color: #2f2f2f;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  z-index: 902;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.overlay-corner-back:hover {
+  background: rgba(255,255,255,0.96);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.2);
+}
+
+.overlay-corner-back:active {
+  transform: scale(0.98);
+}
+
+.overlay-corner-back .back-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.overlay-corner-back .back-text {
+  letter-spacing: 0.2px;
+}
+
 #menu-panel {
   background: #fff;
   color: #333;
@@ -140,6 +188,66 @@ html, body {
   font-size: 20px;
   width: 24px;
   text-align: center;
+}
+
+/* ── Level overlay (independent page) ── */
+#level-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 901;
+  backdrop-filter: blur(2px);
+}
+
+#level-overlay.hidden { display: none; }
+
+#level-page {
+  position: relative;
+  width: min(420px, 92vw);
+  max-height: 82vh;
+  overflow-y: auto;
+  background: #fff;
+  color: #333;
+  border-radius: 20px;
+  padding: 18px 18px 16px;
+}
+
+#level-title {
+  text-align: center;
+  margin-bottom: 12px;
+  color: #1a6b3a;
+}
+
+#menu-level-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.menu-level-btn {
+  border: 1px solid #d6d6d6;
+  border-radius: 10px;
+  background: #fff;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 14px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-level-btn:hover {
+  background: #f0f0f0;
+}
+
+.menu-level-btn.active {
+  border-color: #1a6b3a;
+  background: #e7f5ec;
+  color: #1a6b3a;
+  font-weight: 700;
 }
 
 /* ── Foundation area ── */

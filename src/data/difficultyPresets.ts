@@ -19,8 +19,7 @@ export const DIFFICULTY_CALIBRATION_TABLE: {
     measuredPassRate: '（填写）',
     config: {
       categories: uniformCategories(9, 4),
-      movesBack: 95,
-      moveBuffer: 28,
+      movesLimit: 140,
     },
   },
   {
@@ -29,8 +28,7 @@ export const DIFFICULTY_CALIBRATION_TABLE: {
     measuredPassRate: '（填写）',
     config: {
       categories: uniformCategories(10, 5),
-      movesBack: 110,
-      moveBuffer: 22,
+      movesLimit: 160,
     },
   },
   {
@@ -39,8 +37,7 @@ export const DIFFICULTY_CALIBRATION_TABLE: {
     measuredPassRate: '（填写）',
     config: {
       categories: uniformCategories(11, 5),
-      movesBack: 125,
-      moveBuffer: 18,
+      movesLimit: 175,
     },
   },
   {
@@ -49,8 +46,7 @@ export const DIFFICULTY_CALIBRATION_TABLE: {
     measuredPassRate: '（填写）',
     config: {
       categories: uniformCategories(12, 6),
-      movesBack: 140,
-      moveBuffer: 15,
+      movesLimit: 190,
     },
   },
 ]

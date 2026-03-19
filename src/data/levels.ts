@@ -1,79 +1,46 @@
-import type { LevelData, Card } from '../types/game'
+import type { LevelData } from '../types/game'
+import { generateFromConfig, CATEGORY_NAMES } from '../game/LevelGenerator'
+import type { LevelConfig, CategoryDef } from '../game/LevelGenerator'
 
-function card(id: string, category: string, isBase: boolean): Card {
-  const label = isBase ? `【${category}】` : `${category}${id.split('-')[1]}`
-  return { id, category, isBase, label, faceUp: false }  // initGameState sets actual faceUp
+function categoriesFromCounts(counts: number[]): CategoryDef[] {
+  return counts.map((cardCount, i) => ({
+    name: CATEGORY_NAMES[i],
+    cardCount,
+  }))
 }
 
-/**
- * Level 1 — Tutorial (6 cards, 2 categories)
- *
- * Category A: 【A】, A1, A2
- * Category B: 【B】, B1, B2
- *
- * Tableau (18-card area, here reduced to 6):
- *   Stack0 (2 cards): bottom→top = [A1, 【B】]
- *   Stack1 (2 cards): bottom→top = [B1, A2]
- *   Stack2 empty
- *   Stack3 empty
- *
- * Stock (2 cards): [【A】, B2]   (index 0 = next to draw)
- *
- * Solvable path:
- *   1. Draw 【A】 from stock → place in foundation slot 0
- *   2. Move A2 (top of stack1) → foundation slot 0
- *   3. Move 【B】 (top of stack0) → foundation slot 1
- *   4. Move B1 (now top of stack1) → foundation slot 1
- *   5. Draw B2 from stock → foundation slot 1  (B eliminates!)
- *   6. Move A1 (now top of stack0) → foundation slot 0  (A eliminates!)
- *   Total: 6 moves. movesLimit = 20.
- */
-export const level1: LevelData = {
-  id: 'level-1',
-  name: '第1关 — 入门',
-  movesLimit: 20,
-  tableau: [
-    [card('A-1', 'A', false), card('B-base', 'B', true)],   // stack 0
-    [card('B-1', 'B', false), card('A-2', 'A', false)],     // stack 1
-    [],                                                        // stack 2
-    [],                                                        // stack 3
-  ],
-  stock: [
-    card('A-base', 'A', true),
-    card('B-2', 'B', false),
-  ],
+interface LevelPreset {
+  name: string
+  movesLimit: number
+  counts: number[]
+  seed: number
 }
 
-/**
- * Level 2 — 3 categories, Stock plays a bigger role
- *
- * Category A: 【A】, A1, A2
- * Category B: 【B】, B1, B2
- * Category C: 【C】, C1, C2
- *
- * Tableau:
- *   Stack0: [C1, A1]
- *   Stack1: [A2, 【C】]
- *   Stack2: [B1, C2]
- *   Stack3: []
- *
- * Stock: [【A】, 【B】, B2]
- */
-export const level2: LevelData = {
-  id: 'level-2',
-  name: '第2关 — 三分类',
-  movesLimit: 30,
-  tableau: [
-    [card('C-1', 'C', false), card('A-1', 'A', false)],
-    [card('A-2', 'A', false), card('C-base', 'C', true)],
-    [card('B-1', 'B', false), card('C-2', 'C', false)],
-    [],
-  ],
-  stock: [
-    card('A-base', 'A', true),
-    card('B-base', 'B', true),
-    card('B-2', 'B', false),
-  ],
-}
+// Source: Phase 3_d table in schedule.md (fixed campaign presets).
+const PRESETS: LevelPreset[] = [
+  { name: '第1关', movesLimit: 30, counts: [5, 4, 3, 3], seed: 1001 },
+  { name: '第2关', movesLimit: 80, counts: [7, 6, 6, 6, 5, 4, 3], seed: 1002 },
+  { name: '第3关', movesLimit: 130, counts: [7, 7, 8, 6, 5, 5, 5, 4, 3], seed: 1003 },
+  { name: '第4关', movesLimit: 120, counts: [7, 7, 8, 6, 5, 5, 5, 4, 3], seed: 1004 },
+  { name: '第5关', movesLimit: 130, counts: [7, 7, 8, 6, 5, 5, 5, 4, 6], seed: 1005 },
+  { name: '第6关', movesLimit: 180, counts: [8, 8, 7, 7, 7, 6, 6, 5, 4, 3, 3], seed: 1006 },
+  { name: '第7关', movesLimit: 80, counts: [5, 5, 5, 3, 3, 3, 3, 4, 3, 3], seed: 1007 },
+  { name: '第8关', movesLimit: 120, counts: [7, 5, 5, 4, 4, 4, 3, 4, 3, 5, 7], seed: 1008 },
+  { name: '第9关', movesLimit: 150, counts: [3, 4, 6, 6, 8, 7, 7, 8, 6, 5, 4], seed: 1009 },
+  { name: '第10关', movesLimit: 150, counts: [3, 4, 4, 4, 4, 4, 4, 5, 8, 8, 8, 8], seed: 1010 },
+]
 
-export const LEVELS: LevelData[] = [level1, level2]
+export const LEVEL_CONFIGS: LevelConfig[] = PRESETS.map(p => ({
+  categories: categoriesFromCounts(p.counts),
+  movesLimit: p.movesLimit,
+  seed: p.seed,
+}))
+
+export const LEVELS: LevelData[] = PRESETS.map((preset, idx) => {
+  const generated = generateFromConfig(LEVEL_CONFIGS[idx])
+  return {
+    ...generated,
+    id: `level-${idx + 1}`,
+    name: preset.name,
+  }
+})
