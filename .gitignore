@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# Local notes — not tracked in repo
+report.md

@@ -1,6 +1,11 @@
 # Whatcard
 
+点击https://fly2outerspace.github.io/whatcard 开始体验！
+
 浏览器端卡牌分类接龙 Demo（Vite + TypeScript + GSAP）。玩法与关卡设计说明见仓库内 `engineer.md`、`design.md`；开发排期见 `schedule.md`。
+
+![Whatcard — 浏览器端卡牌分类接龙](assets/whatcard.png)
+
 
 ## 环境要求
 
