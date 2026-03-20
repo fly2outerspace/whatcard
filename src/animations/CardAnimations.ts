@@ -123,15 +123,23 @@ export function animateStockDraw(stockRect: DOMRect, discardCardEl: HTMLElement)
 
 /**
  * Burst / flash animation when a category is eliminated from a foundation slot.
+ * Temporarily lifts overflow clipping on #foundation-area so the scale-up and
+ * box-shadow glow are not clipped on any side.
  */
 export function animateElimination(slotEl: HTMLElement): void {
+  const area = document.getElementById('foundation-area')
+  if (area) area.style.overflow = 'visible'
+
   const tl = gsap.timeline()
   tl.to(slotEl, { scale: 1.35, duration: 0.15, ease: 'power2.out' })
     .to(slotEl, { scale: 1, duration: 0.25, ease: 'elastic.out(1.2, 0.4)' })
 
-  // Brief glow: add + remove the CSS class via JS
+  // Remove glow class and restore overflow after the full glow duration (600ms)
   slotEl.classList.add('eliminating')
-  setTimeout(() => slotEl.classList.remove('eliminating'), 600)
+  setTimeout(() => {
+    slotEl.classList.remove('eliminating')
+    if (area) area.style.overflow = ''
+  }, 600)
 }
 
 // ── Game-end overlays ──────────────────────────────────────

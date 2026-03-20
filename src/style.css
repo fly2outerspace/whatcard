@@ -59,6 +59,10 @@ html, body {
     calc(10px + env(safe-area-inset-bottom, 0px))
     min(10px, 2.5vw);
   min-height: 100dvh;
+  /* Desktop: center the game as a portrait column, background fills the rest */
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ── Row 1: menu + remaining moves aligned to left ── */
@@ -759,3 +763,18 @@ html, body {
 #overlay-btn:hover  { background: #15803d; }
 #overlay-btn:active { transform: scale(0.97); }
 
+/* ── Desktop portrait column (≥ 600px) ── */
+@media (min-width: 600px) {
+  /* Allow vertical scroll on desktop if viewport is too short */
+  html, body {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+
+  /* Anchor the overlay back button to the left edge of the #app column.
+     #app is max-width 520px centered: left edge = 50vw - 260px */
+  .overlay-corner-back {
+    left: calc(50vw - 260px + 16px);
+  }
+}

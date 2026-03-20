@@ -579,6 +579,49 @@ Phase 5     补充与调整          → 关卡微调、移动端、业务字段
 
 ---
 
+### P5-2b — 桌面端竖屏适配
+
+> 目标：在宽屏浏览器（PC / iPad 横屏）上，将游戏区域约束为居中的竖屏柱状布局，模拟"手机竖放在宽绿桌上"的效果；无需改动任何游戏逻辑与拖拽 JS。
+>
+> 背景：当前 `#app` 宽度为 100%，卡片宽度被 `clamp(72px, 22vw, 120px)` 限制在 120px，宽屏下 4 列仅占 ~504px，两侧出现大片空白且布局散开；`position: fixed; left: 16px` 的返回按钮在游戏列居中后会偏移到视口左侧。
+
+#### D-A — 游戏列居中（核心）
+
+> **原理**：`max-width: 520px` 的依据：4 列 × 120px + 3 × gap(8px) + 左右 padding(8px) × 2 = 520px，恰好不触发内部横向溢出；背景 radial-gradient 仍铺满视口，营造桌布感。
+
+- [x] `#app`：新增 `max-width: 520px; margin-left: auto; margin-right: auto;`（与已有 `flex-direction: column` 不冲突）
+
+#### D-B — 修正 overlay 返回按钮定位
+
+> **问题**：`.overlay-corner-back { position: fixed; left: 16px }` 相对于视口，游戏列居中后按钮出现在视口最左侧，游离在游戏区外。
+
+- [x] `@media (min-width: 600px)` 下覆盖 `.overlay-corner-back` 的 `left`：
+  ```css
+  @media (min-width: 600px) {
+    .overlay-corner-back {
+      left: calc(50vw - 260px + 16px);
+      /* 50vw - 260px = 游戏列左边缘（max-width: 520px 居中时）; +16px = 列内缩进 */
+    }
+  }
+  ```
+
+#### D-C — 桌面端允许纵向滚动（兜底）
+
+> **问题**：`html, body { overflow: hidden }` 防止手机拖拽时页面滚动，但在桌面端若视口高度不足以容纳所有行，内容会被裁切。
+
+- [x] `@media (min-width: 600px)` 下将 `html, body` 的 `overflow` 改为 `overflow-y: auto`，使桌面端可纵向滚动（手机端不受影响）
+
+#### D-D — 验证
+
+- [ ] 桌面浏览器（≥ 1024px）：游戏列居中，两侧露出背景绿；4 列卡片完整、不溢出
+- [ ] overlay 返回按钮位于游戏列左侧内边缘，不偏移到视口左侧
+- [ ] 拖拽行为正常（`DragHandler` 基于 `getBoundingClientRect()`，无需修改）
+- [ ] iPad 横屏（1024px 以上）同上；iPad 竖屏（768px）视同小屏，不触发桌面规则
+
+**验收**：1280px 屏下游戏列居中可玩；overlay 交互按钮不错位；移动端不受影响。
+
+---
+
 ### P5-3 — 卡片内容业务位
 
 > 在现有「类别 + 展示标签」之外，为**运营 / 业务**预留可配置字段（文案、图、外链、活动 ID 等），具体字段以产品为准。
