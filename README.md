@@ -32,6 +32,16 @@ npm run dev
 | `npm run build` | TypeScript 检查 + 产出 `dist/` 静态资源 |
 | `npm run preview` | 本地预览生产构建（需先 `npm run build`） |
 
+## 部署到 GitHub Pages
+
+1. 将仓库推送到 GitHub（默认分支为 `main` 或 `master`，与工作流一致）。
+2. **Settings → Pages**：**Build and deployment** 里 **Source** 选 **GitHub Actions**。
+3. 推送任意提交到默认分支，或手动运行 **Actions → Deploy to GitHub Pages → Run workflow**。
+4. 构建在 CI 中会设置 `GITHUB_REPOSITORY`，`vite.config.ts` 自动将 **`base`** 设为 `/仓库名/`（用户/组织站 `*.github.io` 仓库则为 `/`）。
+5. 站点地址：`https://<用户名>.github.io/<仓库名>/`（项目页）或 `https://<用户名>.github.io/`（`用户名.github.io` 仓库）。
+
+本地构建默认 `base` 为 `/`，与 `npm run preview` 一致。若要在本机模拟子路径，可在 PowerShell 中：`$env:GITHUB_REPOSITORY='owner/whatcard'; npm run build` 后再 `npm run preview`。
+
 ## 目录结构（简要）
 
 ```

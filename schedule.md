@@ -599,4 +599,30 @@ Phase 5     补充与调整          → 关卡微调、移动端、业务字段
 
 ---
 
-**Phase 5 验收**（待本阶段开工后填写）：关卡表定稿并已同步代码；移动端清单项通过；业务位按约定展示；小丑牌规则闭环可玩。
+### P5-5 — GitHub Pages 静态发布
+
+> 目标：将当前 Vite 构建产物发布为可公开访问的静态站（免费额度内）；CI 自动根据仓库名设置子路径 `base`，避免资源 404。
+
+#### 仓库与配置（一次性）
+
+- [ ] 在 GitHub 创建远程仓库并推送本仓库代码（默认分支 `main` 或 `master` 与工作流 `on.push.branches` 一致）
+- [ ] **Settings → Pages**：**Build and deployment** → **Source** 选 **GitHub Actions**（不要仅改分支而不启用 Actions 源）
+- [ ] 若默认分支不是 `main`/`master`，修改 `.github/workflows/deploy-pages.yml` 中的 `branches` 列表
+
+#### 代码与构建（本仓库已落地）
+
+- [x] `vite.config.ts`：在 `GITHUB_REPOSITORY` 存在时设置 `base` 为 `/仓库名/`；`*.github.io` 用户/组织站仓库使用 `base: '/'`；本地无该变量时为 `/`（与 `npm run preview` 一致）
+- [x] `public/.nojekyll`：复制到 `dist`，避免 GitHub 侧 Jekyll 误处理静态资源
+- [x] `.github/workflows/deploy-pages.yml`：`npm ci` → `npm run build` → `actions/upload-pages-artifact`（`dist`）→ `actions/deploy-pages`
+
+#### 验证
+
+- [ ] 推送后 **Actions** 中 **Deploy to GitHub Pages** 工作流成功（绿勾）
+- [ ] 浏览器打开 `https://<用户名>.github.io/<仓库名>/`（项目页）可加载游戏、无控制台资源 404
+- [x] `README.md` 已补充「部署到 GitHub Pages」简要步骤（与上同步）
+
+> **说明**：免费个人账号下 Pages 站点对公网可见；私有仓库是否可开 Pages 取决于 GitHub 套餐。用量与政策见 [GitHub Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)。
+
+---
+
+**Phase 5 验收**（待本阶段开工后填写）：关卡表定稿并已同步代码；移动端清单项通过；业务位按约定展示；小丑牌规则闭环可玩；（可选）P5-5 线上地址可访问。
