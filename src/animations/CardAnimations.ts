@@ -36,23 +36,34 @@ export function animateFlyTo(
 }
 
 /**
- * Snap-back animation on invalid drop.
- * Uses power3.out (no overshoot) so the ghost lands exactly at originRect
- * without any visual displacement — eliminating the perceived gap between
- * where the ghost settles and where the card appears after being revealed.
+ * Snap-back animation on invalid drop, followed by a left-right shake
+ * ("shaking head") to signal the move was illegal.
+ *
+ * Phase 1 — ghost flies back to originRect quickly (power3.out, no overshoot).
+ * Phase 2 — ghost shakes horizontally three times then settles, then onComplete fires.
  */
-export function animateSnapBack(
+export function animateInvalidDrop(
   el: HTMLElement,
   originRect: DOMRect,
   onComplete: () => void,
 ): void {
-  gsap.to(el, {
+  const tl = gsap.timeline({ onComplete })
+  tl.to(el, {
     left: originRect.left,
     top: originRect.top,
     scale: 1,
-    duration: 0.28,
+    duration: 0.2,
     ease: 'power3.out',
-    onComplete,
+  })
+  .to(el, {
+    keyframes: [
+      { x: -10, duration: 0.06 },
+      { x:  10, duration: 0.06 },
+      { x:  -8, duration: 0.055 },
+      { x:   8, duration: 0.055 },
+      { x:  -4, duration: 0.05 },
+      { x:   0, duration: 0.05 },
+    ],
   })
 }
 

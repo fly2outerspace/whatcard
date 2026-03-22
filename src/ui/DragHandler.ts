@@ -4,7 +4,7 @@ import { isValidMove, getMovingCards, getMovableGroup } from '../game/MoveValida
 import { applyMove } from '../game/GameState'
 import { createCardEl } from './CardRenderer'
 import { isGamePaused } from './MenuHandler'
-import { animateLift, animateFlyTo, animateSnapBack } from '../animations/CardAnimations'
+import { animateLift, animateFlyTo, animateInvalidDrop } from '../animations/CardAnimations'
 
 // Module-level state ref — updated on each new game
 let _state: GameState | null = null
@@ -307,7 +307,7 @@ function onPointerUp(e: PointerEvent): void {
   session = null  // block new drags during snap-back
 
   gsap.killTweensOf(capturedSession.ghostEl)
-  animateSnapBack(capturedSession.ghostEl, capturedSession.originRect, () => {
+  animateInvalidDrop(capturedSession.ghostEl, capturedSession.originRect, () => {
     setSourceVisibility(capturedSession.source, true)
     capturedSession.ghostEl.remove()
   })

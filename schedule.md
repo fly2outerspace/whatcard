@@ -672,4 +672,15 @@ Phase 5     补充与调整          → 关卡微调、移动端、业务字段
 
 ---
 
+### P5-6 — 非法拖拽摇头反馈 ✅
+
+> 目标：玩家将卡牌拖到非法落点时，卡牌立即复位并左右摇摆（"摇头"），明确传达"不可放"信号。
+
+- [x] `animations/CardAnimations.ts`：新增 `animateInvalidDrop(el, originRect, onComplete)`
+  - Phase 1：ghost 快速飞回原点（`power3.out`，0.2s，无过冲）
+  - Phase 2：ghost 在原点横向摇摆 3 次后归零（总时长约 0.33s）
+- [x] `ui/DragHandler.ts`：非法落点时改为调用 `animateInvalidDrop`，替换原来的 `animateSnapBack`
+
+---
+
 **Phase 5 验收**（待本阶段开工后填写）：关卡表定稿并已同步代码；移动端清单项通过；业务位按约定展示；小丑牌规则闭环可玩；（可选）P5-5 线上地址可访问。
